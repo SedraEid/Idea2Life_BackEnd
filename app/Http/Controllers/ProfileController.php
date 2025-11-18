@@ -10,7 +10,7 @@ class ProfileController extends Controller
 
 
     //عرض البروفايل لصاحب الفكرة
-   public function showProfile(Request $request)
+public function showProfile(Request $request)
 {
     $user = $request->user(); 
 
@@ -24,24 +24,31 @@ class ProfileController extends Controller
         return response()->json(['message' => 'لم يتم إنشاء البروفايل بعد.'], 404);
     }
 
-    $data = collect([$user])->map(function($u) use ($profile) {
-        return [
-            'user_id'       => $u->id,
-            'name'          => $u->name,
-            'email'         => $u->email,
-            'user_type'     => $u->user_type,
-            'profile' => [
-                'profile_id'    => $profile->profile_id ?? $profile->id,
-                'phone'         => $profile->phone,
-                'profile_image' => $profile->profile_image,
-                'bio'           => $profile->bio,
-                'roadmap_stage' => $profile->roadmap_stage,
-            ]
-        ];
-    });
+    $ideaOwner = $user->ideaOwner;
+    $idea = $ideaOwner ? $ideaOwner->ideas()->latest()->first() : null;
+
+    $data = [
+        'user_id'       => $user->id,
+        'name'          => $user->name,
+        'email'         => $user->email,
+        'user_type'     => $user->user_type,
+        'profile' => [
+            'profile_id'    => $profile->id,
+            'phone'         => $profile->phone,
+            'profile_image' => $profile->profile_image,
+            'bio'           => $profile->bio,
+        ],
+        'idea' => $idea ? [
+            'idea_id'        => $idea->id,
+            'title'          => $idea->title,
+            'status'         => $idea->status,
+            'roadmap_stage'  => $idea->roadmap_stage,
+        ] : null,
+    ];
 
     return response()->json(['idea_owner' => $data], 200);
 }
+
 
 //عرض البروفايل لاعضاء اللجنة
 public function showCommitteeMemberProfile(Request $request)
@@ -79,7 +86,7 @@ public function showCommitteeMemberProfile(Request $request)
 
 
 //تعديل البروفايل
-public function updateIdeaOwnerProfile(Request $request)
+public function updateProfile(Request $request)
 {
     $user = $request->user(); 
 

@@ -16,7 +16,6 @@ class Profile extends Model
         'bio',
         'user_type',
         'committee_role',
-        'roadmap_stage',
         'committee_member_id',
     ];
 

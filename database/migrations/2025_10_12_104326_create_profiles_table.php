@@ -20,9 +20,7 @@ return new class extends Migration
             $table->string('profile_image')->nullable();
             $table->text('bio')->nullable();
             $table->string('user_type')->nullable(); 
-
             $table->string('committee_role')->nullable(); 
-            $table->string('roadmap_stage')->nullable(); 
             
 
             $table->timestamps();

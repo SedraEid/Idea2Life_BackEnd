@@ -18,8 +18,6 @@ class CommitteeMember extends Model
         return $this->belongsTo(Committee::class);
     }
 
-
-
        public function user()
     {
         return $this->belongsTo(User::class);
@@ -28,5 +26,10 @@ class CommitteeMember extends Model
      public function profile()
     {
         return $this->hasOne(Profile::class);
+    }
+
+       public function fundings()
+    {
+        return $this->hasMany(Funding::class, 'investor_id');
     }
 }

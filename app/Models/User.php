@@ -48,5 +48,26 @@ return $this->hasOne(IdeaOwner::class);
         return $this->hasOne(Profile::class);
     }
 
+     public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
+     public function sentTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class, 'sender_id');
+    }
+
+     public function receivedTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class, 'receiver_id');
+    }
+
+        public function notifications()
+    {
+        return $this->hasMany(Notification::class);
+    }
+    
+
 
 }

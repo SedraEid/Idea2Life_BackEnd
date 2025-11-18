@@ -3,18 +3,29 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
-    public function run(): void
+  public function run(): void
     {
-        User::firstOrCreate([
-            'name' => 'Admin',
-            'email' => 'admin@gmail.com',
-            'password' => Hash::make('password'),
-            'user_type' => 'admin',
-        ]);
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@gmail.com'],
+            [
+                'name' => 'Admin',
+                'password' => Hash::make('password'),
+                'user_type' => 'admin',
+            ]
+        );
+        Wallet::firstOrCreate(
+            ['user_id' => $admin->id],
+            [
+                'user_type' => 'admin',
+                'balance' => 0.00,
+                'status' => 'active',
+            ]
+        );
     }
 }
