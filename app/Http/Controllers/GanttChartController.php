@@ -406,11 +406,6 @@ public function updatePhaseReport(Request $request, Idea $idea, $gantt_id)
     ]);
 
 
-
-
-
-    
-
     $lowScoreReports = Report::where('idea_id', $idea->id)
         ->where('delay_count', 1)
         ->whereNull('improvement_plan_id')

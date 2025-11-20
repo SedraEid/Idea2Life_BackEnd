@@ -64,4 +64,10 @@ class Meeting extends Model
     {
         return $this->hasMany(Notification::class);
     }
+
+    public function ganttChart()
+{
+    return $this->belongsTo(GanttChart::class, 'gantt_chart_id');
+}
+
 }

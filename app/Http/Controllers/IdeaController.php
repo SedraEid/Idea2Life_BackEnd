@@ -9,6 +9,7 @@ use App\Models\IdeaOwner;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
+use App\Models\Roadmap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -61,16 +62,30 @@ class IdeaController extends Controller
     $idea->committee_id = $committee->id;
     $idea->save();
 
-    $roadmap = $idea->roadmap()->create([
-        'committee_id' => $committee->id,
-        'owner_id' => $ideaOwner->id,
-        'current_stage' => 'التقييم الأولي',
-        'stage_description' => 'تم بدء التقييم الأولي للفكرة من قبل اللجنة',
-        'progress_percentage' => 0, 
-        'last_update' => now(),
-        'next_step' => 'بانتظار نتائج التقييم الأولي',
-    ]);
+    $existingRoadmap = Roadmap::where('owner_id', $ideaOwner->id)->first();
 
+    if ($existingRoadmap) {
+        $existingRoadmap->update([
+            'idea_id' => $idea->id,
+            'committee_id' => $committee->id,
+            'current_stage' => 'التقييم الأولي',
+            'stage_description' => 'تم بدء التقييم الأولي للفكرة من قبل اللجنة',
+            'progress_percentage' => 0,
+            'last_update' => now(),
+            'next_step' => 'بانتظار نتائج التقييم الأولي',
+        ]);
+        $roadmap = $existingRoadmap;
+    } else {
+        $roadmap = $idea->roadmap()->create([
+            'committee_id' => $committee->id,
+            'owner_id' => $ideaOwner->id,
+            'current_stage' => 'التقييم الأولي',
+            'stage_description' => 'تم بدء التقييم الأولي للفكرة من قبل اللجنة',
+            'progress_percentage' => 0,
+            'last_update' => now(),
+            'next_step' => 'بانتظار نتائج التقييم الأولي',
+        ]);
+    }
     return response()->json([
         'message' => 'تم تسجيل الفكرة، إسنادها للجنة، وإنشاء خارطة الطريق بنجاح!',
         'idea' => $idea,
@@ -507,10 +522,9 @@ public function getIdeaRoadmap(Request $request, Idea $idea)//جلب خارطة 
 
 
 
-public function upcomingMeetings(Request $request)//عرض الاجتماعات لصاحب الفكرة و الوقت المتبقي للاجتماع
+public function upcomingMeetings(Request $request, $idea_id)//جلب الاجتماعات الخاصة بصاحب الفكرة 
 {
     $user = $request->user();
-
     $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
     if (!$ideaOwner) {
         return response()->json([
@@ -518,14 +532,22 @@ public function upcomingMeetings(Request $request)//عرض الاجتماعات 
         ], 404);
     }
 
+    $idea = $ideaOwner->ideas()->where('id', $idea_id)->first();
+    if (!$idea) {
+        return response()->json([
+            'message' => 'هذه الفكرة لا تتبع لك أو غير موجودة.',
+        ], 404);
+    }
+
     $meetings = Meeting::with(['idea:id,title', 'committee:id,committee_name'])
         ->where('owner_id', $ideaOwner->id)
+        ->where('idea_id', $idea_id)
         ->where('meeting_date', '>=', now())
         ->orderBy('meeting_date', 'asc')
         ->get()
-        ->map(function ($meeting) {
+           ->map(function ($meeting) {
             $hoursLeft = $meeting->meeting_date->diffInHours(now());
-            $isSoon = $hoursLeft <= 24; 
+            $isSoon = $hoursLeft <= 24;
 
             return [
                 'id' => $meeting->id,
@@ -542,7 +564,8 @@ public function upcomingMeetings(Request $request)//عرض الاجتماعات 
         });
 
     return response()->json([
-        'message' => 'تم جلب الاجتماعات القادمة بنجاح.',
+        'message' => 'تم جلب الاجتماعات القادمة لهذه الفكرة بنجاح.',
+        'idea_id' => $idea_id,
         'upcoming_meetings' => $meetings
     ]);
 }
@@ -643,22 +666,23 @@ public function updateMeeting(Request $request, $meetingId)//تحديد رابط
 
 
 
-public function ownerReports(Request $request)//جلب التقارير الخاصة بصاحب الفكرة
+public function ownerIdeaReports(Request $request, $idea_id)//جلب التقارير لصاحب الفكرة و للفكرة التي هو بها الان 
 {
     $user = $request->user();
-
     $ideaOwner = $user->ideaOwner;
     if (!$ideaOwner) {
         return response()->json([
             'message' => 'هذا المستخدم لا يملك أي فكرة بعد.'
         ], 404);
     }
+    $idea = $ideaOwner->ideas()->where('id', $idea_id)->first();
 
-    $reports = \App\Models\Report::whereIn('idea_id', function ($query) use ($ideaOwner) {
-            $query->select('id')
-                ->from('ideas')
-                ->where('owner_id', $ideaOwner->id);
-        })
+    if (!$idea) {
+        return response()->json([
+            'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لك.',
+        ], 404);
+    }
+    $reports = \App\Models\Report::where('idea_id', $idea_id)
         ->with([
             'idea:id,title,status',
             'committee:id,committee_name'
@@ -668,7 +692,7 @@ public function ownerReports(Request $request)//جلب التقارير الخا
 
     if ($reports->isEmpty()) {
         return response()->json([
-            'message' => 'لا توجد تقارير مرتبطة بأفكارك حتى الآن.',
+            'message' => 'لا توجد تقارير لهذه الفكرة.',
             'total_reports' => 0,
             'data' => [],
         ], 200);
@@ -695,7 +719,7 @@ public function ownerReports(Request $request)//جلب التقارير الخا
     });
 
     return response()->json([
-        'message' => 'تم جلب جميع التقارير الخاصة بأفكارك بنجاح.',
+        'message' => 'تم جلب جميع التقارير الخاصة بهذه الفكرة.',
         'total_reports' => $formattedReports->count(),
         'data' => $formattedReports,
     ], 200);

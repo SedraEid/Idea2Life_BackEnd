@@ -240,7 +240,7 @@ public function cancelFundingRequest(Request $request, Idea $idea) // إلغاء
 
 
 
-public function getCommitteeFundRequests(Request $request)
+public function getCommitteeFundRequests(Request $request)//عرض طلبات التمويل للجنة 
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
@@ -579,102 +579,112 @@ if (!$evaluation) {
 }
 
 
-
-  public function showMyFunding(Request $request)//عرض التمويل لصاحب الفكرة
-    {
-        $user = $request->user(); 
-        $fundings = Funding::with([
-            'idea:id,title,description,initial_evaluation_score',
-            'ideaOwner.user:id,name,email',
-            'committee:id,committee_name',
-            'investor.user:id,name,email',
-            'meeting:id,meeting_date,notes',
-            'report:id,description,status',
-            'walletTransactions.sender:id,name,email',
-            'walletTransactions.receiver:id,name,email',
-        ])
-        ->whereHas('idea.ideaOwner', function ($q) use ($user) {
+public function showFundingForIdea(Request $request, $idea_id)//عرض طلبات التمويل التي كتبها صاحب الفكرة لصاحب الفكرة
+{
+    $user = $request->user(); 
+    $idea = Idea::where('id', $idea_id)
+        ->whereHas('ideaOwner', function($q) use ($user) {
             $q->where('user_id', $user->id);
         })
-        ->get();
+        ->first();
 
-        if ($fundings->isEmpty()) {
-            return response()->json([
-                'message' => 'لا يوجد تمويلات مرتبطة بأفكارك حالياً.',
-            ], 404);
-        }
-
-        $response = $fundings->map(function ($funding) {
-            return [
-                'funding_id' => $funding->id,
-                'status' => $funding->status,
-                'requested_amount' => $funding->requested_amount,
-                'approved_amount' => $funding->approved_amount,
-                'payment_method' => $funding->payment_method,
-                'transfer_date' => $funding->transfer_date,
-                'transaction_reference' => $funding->transaction_reference,
-                'committee_notes' => $funding->committee_notes,
-                'requirements_verified' => $funding->requirements_verified,
-
-                'idea' => [
-                    'id' => $funding->idea->id ?? null,
-                    'title' => $funding->idea->title ?? null,
-                    'description' => $funding->idea->description ?? null,
-                    'initial_evaluation_score' => $funding->idea->initial_evaluation_score ?? null,
-                ],
-
-                'committee' => [
-                    'id' => $funding->committee->id ?? null,
-                    'name' => $funding->committee->committee_name ?? null,
-                ],
-
-                'investor' => [
-                    'id' => $funding->investor->id ?? null,
-                    'name' => $funding->investor->user->name ?? null,
-                    'email' => $funding->investor->user->email ?? null,
-                ],
-
-                'meeting' => [
-                    'id' => $funding->meeting->id ?? null,
-                    'meeting_date' => $funding->meeting->meeting_date ?? null,
-                    'notes' => $funding->meeting->notes ?? 'رابط الاجتماع سيُحدد لاحقًا من قبل اللجنة',
-                ],
-
-                'report' => [
-                    'id' => $funding->report->id ?? null,
-                    'description' => $funding->report->description ?? null,
-                    'status' => $funding->report->status ?? null,
-                ],
-
-                'wallet_transactions' => $funding->walletTransactions->map(function ($tx) {
-                    return [
-                        'transaction_id' => $tx->id,
-                        'transaction_type' => $tx->transaction_type,
-                        'amount' => $tx->amount,
-                        'status' => $tx->status,
-                        'payment_method' => $tx->payment_method,
-                        'notes' => $tx->notes,
-                        'sender' => [
-                            'id' => $tx->sender->id ?? null,
-                            'name' => $tx->sender->name ?? null,
-                            'email' => $tx->sender->email ?? null,
-                        ],
-                        'receiver' => [
-                            'id' => $tx->receiver->id ?? null,
-                            'name' => $tx->receiver->name ?? null,
-                            'email' => $tx->receiver->email ?? null,
-                        ],
-                        'created_at' => $tx->created_at->format('Y-m-d H:i:s'),
-                    ];
-                }),
-            ];
-        });
-
+    if (!$idea) {
         return response()->json([
-            'fundings' => $response,
-        ]);
+            'message' => 'هذه الفكرة غير موجودة أو لا تنتمي لك.',
+        ], 404);
     }
 
+    $fundings = Funding::with([
+        'idea:id,title,description,initial_evaluation_score',
+        'ideaOwner.user:id,name,email',
+        'committee:id,committee_name',
+        'investor.user:id,name,email',
+        'meeting:id,meeting_date,notes',
+        'report:id,description,status',
+        'walletTransactions.sender:id,name,email',
+        'walletTransactions.receiver:id,name,email',
+    ])
+    ->where('idea_id', $idea_id)
+    ->get();
+
+    if ($fundings->isEmpty()) {
+        return response()->json([
+            'message' => 'لا يوجد طلبات تمويل لهذه الفكرة.',
+        ], 404);
+    }
+
+    $response = $fundings->map(function ($funding) {
+        return [
+            'funding_id' => $funding->id,
+            'status' => $funding->status,
+            'requested_amount' => $funding->requested_amount,
+            'approved_amount' => $funding->approved_amount,
+            'payment_method' => $funding->payment_method,
+            'transfer_date' => $funding->transfer_date,
+            'transaction_reference' => $funding->transaction_reference,
+            'committee_notes' => $funding->committee_notes,
+            'requirements_verified' => $funding->requirements_verified,
+
+            'idea' => [
+                'id' => $funding->idea->id ?? null,
+                'title' => $funding->idea->title ?? null,
+                'description' => $funding->idea->description ?? null,
+                'initial_evaluation_score' => $funding->idea->initial_evaluation_score ?? null,
+            ],
+
+            'committee' => [
+                'id' => $funding->committee->id ?? null,
+                'name' => $funding->committee->committee_name ?? null,
+            ],
+
+            'investor' => [
+                'id' => $funding->investor->id ?? null,
+                'name' => $funding->investor->user->name ?? null,
+                'email' => $funding->investor->user->email ?? null,
+            ],
+
+            'meeting' => [
+                'id' => $funding->meeting->id ?? null,
+                'meeting_date' => $funding->meeting->meeting_date ?? null,
+                'notes' => $funding->meeting->notes ?? 'رابط الاجتماع سيُحدد لاحقًا من قبل اللجنة',
+            ],
+
+            'report' => [
+                'id' => $funding->report->id ?? null,
+                'description' => $funding->report->description ?? null,
+                'status' => $funding->report->status ?? null,
+            ],
+
+            'wallet_transactions' => $funding->walletTransactions->map(function ($tx) {
+                return [
+                    'transaction_id' => $tx->id,
+                    'transaction_type' => $tx->transaction_type,
+                    'amount' => $tx->amount,
+                    'status' => $tx->status,
+                    'payment_method' => $tx->payment_method,
+                    'notes' => $tx->notes,
+                    'sender' => [
+                        'id' => $tx->sender->id ?? null,
+                        'name' => $tx->sender->name ?? null,
+                        'email' => $tx->sender->email ?? null,
+                    ],
+                    'receiver' => [
+                        'id' => $tx->receiver->id ?? null,
+                        'name' => $tx->receiver->name ?? null,
+                        'email' => $tx->receiver->email ?? null,
+                    ],
+                    'created_at' => $tx->created_at->format('Y-m-d H:i:s'),
+                ];
+            }),
+        ];
+    });
+
+    return response()->json([
+        'idea_id' => $idea_id,
+        'idea_title' => $idea->title,
+        'fundings' => $response,
+    ]);
+}
 
 
 

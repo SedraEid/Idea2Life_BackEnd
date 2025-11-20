@@ -564,7 +564,7 @@ if (!$ideaOwner || $idea->owner_id != $ideaOwner->id) {
 }
 
 
-public function showAllOwnerIdeasWithBMC(Request $request)//عرض الbmc لصاحب الفكرة
+public function showOwnerIdeaBMC(Request $request, $idea_id)//جلب ال BMC لصاحب الفكرة و لفكرة محددة
 {
     $user = $request->user();
 
@@ -572,22 +572,25 @@ public function showAllOwnerIdeasWithBMC(Request $request)//عرض الbmc لص�
 
     if (!$ideaOwner) {
         return response()->json([
-            'message' => 'ليس لديك أي أفكار بعد.'
+            'message' => 'أنت لا تملك أي أفكار.'
         ], 404);
     }
+    $idea = $ideaOwner->ideas()
+        ->with('businessPlan')
+        ->where('id', $idea_id)
+        ->first();
 
-    $ideas = $ideaOwner->ideas()->with('businessPlan')->get();
-
-    if ($ideas->isEmpty()) {
+    if (!$idea) {
         return response()->json([
-            'message' => 'لا توجد أي أفكار مسجلة بعد.'
+            'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لك.'
         ], 404);
     }
 
-    $data = $ideas->map(function ($idea) {
-        $bmc = $idea->businessPlan;
+    $bmc = $idea->businessPlan;
 
-        return [
+    return response()->json([
+        'message' => 'تم جلب خطة العمل بنجاح.',
+        'idea' => [
             'idea_id' => $idea->id,
             'title' => $idea->title,
             'status' => $idea->status,
@@ -607,14 +610,10 @@ public function showAllOwnerIdeasWithBMC(Request $request)//عرض الbmc لص�
                 'created_at' => optional($bmc->created_at)->format('Y-m-d H:i'),
                 'updated_at' => optional($bmc->updated_at)->format('Y-m-d H:i'),
             ] : null,
-        ];
-    });
-
-    return response()->json([
-        'message' => 'تم جلب كل الأفكار مع تفاصيل خطة العمل الخاصة بها بنجاح.',
-        'ideas' => $data
-    ]);
+        ]
+    ], 200);
 }
+
 
 
 

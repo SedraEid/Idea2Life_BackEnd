@@ -10,56 +10,74 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Profile;
+use App\Models\Roadmap;
 use App\Models\Wallet;
 
 class AuthController extends Controller
 {
 
-    //انشاء حساب لصحاب الفكرة
-     public function registerIdeaOwner(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
-        ]);
+  public function registerIdeaOwner(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'name'     => 'required|string|max:255',
+        'email'    => 'required|email|unique:users,email',
+        'password' => 'required|string|min:6',
+        'create_roadmap' => 'nullable|boolean',
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
 
-        $user = User::create([
-            'name'      => $request->name,
-            'email'     => $request->email,
-            'password'  => Hash::make($request->password),
-            'user_type' => 'idea_owner',
-        ]);
+    $user = User::create([
+        'name'      => $request->name,
+        'email'     => $request->email,
+        'password'  => Hash::make($request->password),
+        'user_type' => 'idea_owner',
+    ]);
 
-       $ideaOwner = IdeaOwner::create([
+    $ideaOwner = IdeaOwner::create([
         'user_id' => $user->id,
-        ]);
+    ]);
 
-          $profile = Profile::create([
-            'user_id' => $user->id,
-            'idea_owner_id' => $ideaOwner->id,
-            'user_type' => 'idea_owner'
-        ]);
+    $profile = Profile::create([
+        'user_id' => $user->id,
+        'idea_owner_id' => $ideaOwner->id,
+        'user_type' => 'idea_owner'
+    ]);
 
-         $wallet = Wallet::create([
+    $wallet = Wallet::create([
         'user_id'   => $user->id,
         'user_type' => 'creator',
         'balance'   => 0,        
         'status'    => 'active', 
     ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'message' => 'Idea Owner registered successfully!',
-            'user'    => $user,
-            'token'   => $token
-        ], 201);
+    $roadmap_created = false;
+    if ($request->create_roadmap) {
+        Roadmap::create([
+            'idea_id' => null, 
+            'committee_id' => null,
+            'owner_id' => $ideaOwner->id,
+            'current_stage' => 'غير محدد بعد',
+            'stage_description' => 'سيتم تحديد مراحل خارطة الطريق لاحقًا.',
+            'progress_percentage' => 0,
+            'last_update' => now(),
+            'next_step' => 'ابدأ بإضافة مراحل خارطة الطريق.',
+        ]);
+        $roadmap_created = true;
     }
+
+    $token = $user->createToken('auth_token')->plainTextToken;
+
+    return response()->json([
+        'message' => 'Idea Owner registered successfully!',
+        'user'    => $user,
+        'token'   => $token,
+        'roadmap_created' => $roadmap_created
+    ], 201);
+}
+
 
     //عميلة تسجيل الدخول لصاحب الفكرة
 

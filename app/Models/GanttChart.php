@@ -46,6 +46,12 @@ class GanttChart extends Model
     {
         return $this->hasMany(Evaluation::class, 'gantt_id');
     }
+
+    public function meetings()
+{
+    return $this->hasMany(Meeting::class, 'gantt_chart_id');
+}
+
     
 
 

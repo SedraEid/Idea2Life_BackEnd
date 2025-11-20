@@ -24,6 +24,7 @@ class BusinessPlan extends Model
         'cost_structure',
         'revenue_streams',
         'status',
+        'latest_score',
     ];
 
 

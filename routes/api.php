@@ -45,13 +45,11 @@ Route::middleware('auth:sanctum')->get('/my_ideas', [IdeaController::class, 'myI
 
 Route::middleware('auth:sanctum')->get('/ideas/{idea}/roadmap', [IdeaController::class, 'getIdeaRoadmap']);//جلب خارطة الطريق للفكرة
 
-Route::middleware('auth:sanctum')->group(function () {//جلب التقارير الخاصة بصاحب الفكرة
-    Route::get('/my_idea_reports', [IdeaController::class, 'ownerReports']);
-});
+Route::middleware('auth:sanctum')->get('/idea/{idea_id}/reports', [IdeaController::class, 'ownerIdeaReports']);//جلب التقارير لصاحب الفكرة
 
-Route::middleware('auth:sanctum')->group(function () {//يعرض لصاحب الفكرة الاجتماعات و كم تبقى للاجتماع 
-    Route::get('/my/upcoming_meetings', [IdeaController::class, 'upcomingMeetings']);
-});
+
+Route::middleware('auth:sanctum')->get('/idea/{idea_id}/meetings/upcoming', //يعرض لصاحب الفكرة الاجتماعات
+    [IdeaController::class, 'upcomingMeetings']);
 
 Route::middleware('auth:sanctum')->group(function () {
     // عرض كل الأفكار التابعة للجنة
@@ -72,7 +70,8 @@ Route::get('/committee/bmcs', [BusinessPlanController::class, 'showAllBMCsForCom
 
 Route::middleware('auth:sanctum')->post('/ideas/{idea}/update-bmc', [BusinessPlanController::class, 'updateBMC']);//تعديل ال bmc  اذا كان التقييم اقل من 80
 
-Route::middleware('auth:sanctum')->get('/owner/ideas-with-bmc', [BusinessPlanController::class, 'showAllOwnerIdeasWithBMC']);//عرض ال bmc لصاحب الفكرة
+Route::middleware('auth:sanctum')->get('/idea/{idea_id}/bmc', [BusinessPlanController::class, 'showOwnerIdeaBMC']);
+//عرض ال bmc لصاحب الفكرة
 
 Route::middleware('auth:sanctum')->get('/committee/upcoming-meetings', [BusinessPlanController::class, 'upcomingCommitteeMeetings']); //عرض الاجتماعات للجنة
 
@@ -93,7 +92,12 @@ Route::middleware('auth:sanctum')->group(function () {//تقييم طلب الت
     Route::post('/fundings/{funding}/evaluate', [FundingController::class, 'evaluateFunding']);
 });
 
-Route::middleware('auth:sanctum')->get('/my-fundings', [FundingController::class, 'showMyFunding']);//عرض التمويل لصاحب الفكرة
+
+Route::middleware('auth:sanctum')->group(function () {//عرض التمويل لصاحب الفكرة
+Route::get('/my-ideas/{idea_id}/funding', [FundingController::class, 'showFundingForIdea']);
+
+});
+
 
 Route::middleware('auth:sanctum')->get('/committee/funding-checks', [FundingController::class, 'showCommitteeFundingChecks']);//عرض الشيك للجنة
 
