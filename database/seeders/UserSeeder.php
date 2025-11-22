@@ -16,7 +16,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Admin',
                 'password' => Hash::make('password'),
-                'user_type' => 'admin',
+                'role' => 'admin',
             ]
         );
         Wallet::firstOrCreate(

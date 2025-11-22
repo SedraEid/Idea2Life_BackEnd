@@ -53,6 +53,8 @@ class IdeaController extends Controller
         'target_audience' => $request->target_audience,
         'additional_notes' => $request->additional_notes,
         'status' => 'pending',
+        'roadmap_stage' => 'مرحلة تقديم الفكرة',
+
     ]);
 
     $committee = Committee::doesntHave('ideas')->first();
@@ -140,6 +142,7 @@ public function update(Request $request, Idea $idea)//تعديل الفكرة ب
 
         $idea->roadmap()->update([
             'stage_description' => 'تم تعديل الفكرة بناءً على ملاحظات اللجنة وهي بانتظار إعادة التقييم.',
+            'roadmap_stage' => 'بانتظار إعادة التقييم بعد التعديلات',
             'last_update' => now(),
         ]);
     }
@@ -274,9 +277,6 @@ $ideaOwner = $idea->ideaowner;
 if ($ideaOwner) {
     Notification::create([
         'user_id'    => $ideaOwner->user_id, 
-        'idea_id'    => $idea->id,
-        'meeting_id' => $meeting->id ?? null,
-        'report_id'  => $report->id ?? null,
         'title'      => 'تقرير التقييم الأولي متاح للمراجعة',
         'message'    => "تم إصدار تقرير التقييم الأولي لفكرتك '{$idea->title}'. يرجى الاطلاع على ملاحظات اللجنة ونتيجة التقييم.",
         'type'       => 'initial_report_owner',
@@ -291,10 +291,7 @@ if ($idea->committee && $idea->committee->committeeMember) {
         if ($member->user_id == $user->id) continue;
 
         Notification::create([
-            'user_id'    => $member->user_id,
-            'idea_id'    => $idea->id,
-            'meeting_id' => $meeting->id ?? null,
-            'report_id'  => $report->id ?? null,
+            'user_id'    => $member->user_id,    
             'title'      => "تم إنشاء تقرير تقييم أولي لفكرة '{$idea->title}'",
             'message'    => "أصدر أحد أعضاء اللجنة تقرير التقييم الأولي للفكرة '{$idea->title}'. يمكنك الاطلاع عليه في لوحة التقارير.",
             'type'       => 'initial_report_committee',
@@ -572,7 +569,7 @@ public function upcomingMeetings(Request $request, $idea_id)//جلب الاجت�
 
 
 
-public function committee_Ideas(Request $request)//عرض الفكرة مع الاجتماع مع صاحب الفكرة  للجنة 
+public function committee_Ideas(Request $request) // عرض الأفكار مع الاجتماعات وصاحب الفكرة للجنة
 {
     $user = $request->user();
 
@@ -585,14 +582,13 @@ public function committee_Ideas(Request $request)//عرض الفكرة مع ال
     $committeeId = $user->committeeMember->committee_id;
 
     $ideas = \App\Models\Idea::with([
-            'ideaowner.user.profile', 
+            'ideaowner.user', 
             'meetings'
         ])
         ->where('committee_id', $committeeId)
         ->get()
         ->map(function ($idea) {
             $owner = $idea->ideaowner?->user;
-            $profile = $owner?->profile;
 
             return [
                 'idea_id' => $idea->id,
@@ -612,10 +608,10 @@ public function committee_Ideas(Request $request)//عرض الفكرة مع ال
                 'idea_owner' => [
                     'name' => $owner?->name,
                     'email' => $owner?->email,
-                    'phone' => $profile?->phone,
-                    'profile_image' => $profile?->profile_image,
-                    'bio' => $profile?->bio,
-                    'user_type' => $profile?->user_type,
+                    'phone' => $owner?->phone,
+                    'profile_image' => $owner?->profile_image,
+                    'bio' => $owner?->bio,
+                    'user_type' => $owner?->role, 
                 ],
             ];
         });
@@ -625,6 +621,7 @@ public function committee_Ideas(Request $request)//عرض الفكرة مع ال
         'ideas' => $ideas,
     ]);
 }
+
 
 
 

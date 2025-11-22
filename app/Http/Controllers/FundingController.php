@@ -529,9 +529,6 @@ if (!$evaluation) {
 
     Notification::create([
         'user_id' => $idea->ideaowner?->user_id,
-        'idea_id' => $idea->id,
-        'meeting_id' => $funding->meeting_id,
-        'report_id' => $report->id,
         'title' => 'تقرير تمويل جديد',
         'message' => 'تم إصدار تقرير تقييم التمويل لفكرتك "' . $idea->title . '" والحالة: ' . $validated['status'] . '.',
         'type' => 'funding_report_owner',
@@ -545,9 +542,6 @@ if (!$evaluation) {
     foreach ($committeeMembers as $member) {
         Notification::create([
             'user_id' => $member->user_id,
-            'idea_id' => $idea->id,
-            'meeting_id' => $funding->meeting_id,
-            'report_id' => $report->id,
             'title' => 'تقرير تمويل جديد',
             'message' => 'تم إصدار تقرير تمويل جديد للفكرة "' . $idea->title . '". الحالة: ' . $validated['status'] . '.',
             'type' => 'funding_report_committee',
@@ -558,9 +552,6 @@ if (!$evaluation) {
     if ($validated['status'] === 'approved') {
         Notification::create([
             'user_id' => $idea->ideaowner?->user_id,
-            'idea_id' => $idea->id,
-            'meeting_id' => $funding->meeting_id,
-            'report_id' => $report->id,
             'title' => 'تمت الموافقة على التمويل',
             'message' => 'مبروك! تمت الموافقة على تمويل فكرتك "' . $idea->title . '" وتم تحويل المبلغ إلى محفظتك.',
             'type' => 'funding_approved',

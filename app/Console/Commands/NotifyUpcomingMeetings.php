@@ -61,9 +61,6 @@ class NotifyUpcomingMeetings extends Command
                     if (!$alreadyNotified) {
                         Notification::create([
                             'user_id'    => $ownerUserId,
-                            'idea_id'    => $idea->id,
-                            'meeting_id' => $meeting->id,
-                            'report_id'  => $meeting->report?->id,
                             'title'      => "تذكير باقتراب موعد اجتماعك {$label}",
                             'message'    => "لديك اجتماع بعنوان '" . ($meeting->type ?? 'اجتماع') . "' سيبدأ في " . $meeting->meeting_date->format('Y-m-d H:i'),
                             'type'       => $type,
@@ -93,9 +90,6 @@ class NotifyUpcomingMeetings extends Command
                         if (!$alreadyNotified) {
                             Notification::create([
                                 'user_id'    => $committeeUserId,
-                                'idea_id'    => $idea->id,
-                                'meeting_id' => $meeting->id,
-                                'report_id'  => $meeting->report?->id,
                                 'title'      => "تذكير باقتراب اجتماع الفكرة '{$idea->title}' {$label}",
                                 'message'    => "هناك اجتماع للفكرة '{$idea->title}' سيبدأ في " . $meeting->meeting_date->format('Y-m-d H:i'),
                                 'type'       => $type,

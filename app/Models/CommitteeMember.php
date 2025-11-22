@@ -23,10 +23,7 @@ class CommitteeMember extends Model
         return $this->belongsTo(User::class);
     }
 
-     public function profile()
-    {
-        return $this->hasOne(Profile::class);
-    }
+   
 
        public function fundings()
     {

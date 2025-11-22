@@ -9,7 +9,6 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use App\Models\Profile;
 use App\Models\Roadmap;
 use App\Models\Wallet;
 
@@ -22,7 +21,7 @@ class AuthController extends Controller
         'name'     => 'required|string|max:255',
         'email'    => 'required|email|unique:users,email',
         'password' => 'required|string|min:6',
-        'create_roadmap' => 'nullable|boolean',
+        'Notification' => 'nullable|boolean',
     ]);
 
     if ($validator->fails()) {
@@ -33,17 +32,11 @@ class AuthController extends Controller
         'name'      => $request->name,
         'email'     => $request->email,
         'password'  => Hash::make($request->password),
-        'user_type' => 'idea_owner',
+        'role' => 'idea_owner',
     ]);
 
     $ideaOwner = IdeaOwner::create([
         'user_id' => $user->id,
-    ]);
-
-    $profile = Profile::create([
-        'user_id' => $user->id,
-        'idea_owner_id' => $ideaOwner->id,
-        'user_type' => 'idea_owner'
     ]);
 
     $wallet = Wallet::create([
@@ -93,7 +86,7 @@ class AuthController extends Controller
         }
 
         $user = User::where('email', $request->email)
-                    ->where('user_type', 'idea_owner') 
+                    ->where('role', 'idea_owner') 
                     ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
@@ -124,7 +117,8 @@ public function registerCommitteeMember(Request $request)
         'name' => $request->name,
         'email' => $request->email,
         'password' => Hash::make($request->password),
-        'user_type' => 'committee_member',
+        'role' => 'committee_member',
+        'committee_role'  => $request->role_in_committee,
     ]);
 
     $committee = Committee::whereDoesntHave('committeeMember', function($q) use ($request) {
@@ -145,12 +139,7 @@ if (!$committee) {
         'role_in_committee' => $request->role_in_committee
     ]);
 
-    $profile =Profile::create([
-        'user_id' => $user->id,
-        'committee_member_id' => $committeeMember->id,
-        'user_type' => 'committee_member',
-        'committee_role' => $request->role_in_committee
-    ]);
+
 $wallet = Wallet::create([
     'user_id' => $user->id,
     'user_type' => $request->role_in_committee,
@@ -180,7 +169,7 @@ public function loginCommitteeMember(Request $request)
     ]);
 
     $user = User::where('email', $request->email)
-                ->where('user_type', 'committee_member') 
+                ->where('role', 'committee_member') 
                 ->first();
 
     if(!$user || !Hash::check($request->password, $user->password)){
@@ -226,18 +215,17 @@ public function updateCommitteeDescription(Request $request, $committeeId)
 
 
 
-public function myCommitteeDashboard(Request $request)//يعرض لي لجنتي مع دوري بللجنة و باقي الاعضاء
+public function myCommitteeDashboard(Request $request)//يعرض لجنتي مع دوري باللجنة 
 {
     $user = $request->user();
-
     if (!$user->committeeMember) {
         return response()->json([
             'status' => 'error',
             'message' => 'أنت لست عضوًا في أي لجنة.'
         ], 403);
     }
-
-    $committee = $user->committeeMember->committee()->with('committeeMember.user')->first();
+    $committee = Committee::with('committeeMember.user')
+        ->find($user->committeeMember->committee_id);
 
     if (!$committee) {
         return response()->json([
@@ -245,7 +233,6 @@ public function myCommitteeDashboard(Request $request)//يعرض لي لجنتي
             'message' => 'اللجنة غير موجودة.'
         ], 404);
     }
-
     $data = [
         'committee_name' => $committee->committee_name,
         'description' => $committee->description,
@@ -267,6 +254,7 @@ public function myCommitteeDashboard(Request $request)//يعرض لي لجنتي
         'data' => $data
     ]);
 }
+
 
 
 

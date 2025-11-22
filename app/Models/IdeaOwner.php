@@ -16,11 +16,6 @@ class IdeaOwner extends Model
     }
 
 
-     public function profile()
-    {
-        return $this->hasOne(Profile::class);
-    }
-
       public function ideas()
     {
         return $this->hasMany(Idea::class, 'owner_id');

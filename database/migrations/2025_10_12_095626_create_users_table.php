@@ -16,7 +16,11 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->unique();
             $table->string('password');
-            $table->enum('user_type', ['admin', 'idea_owner', 'committee_member', 'investor']); 
+            $table->enum('role', ['admin', 'idea_owner', 'committee_member']); 
+            $table->string('phone')->nullable();
+            $table->string('profile_image')->nullable();
+            $table->text('bio')->nullable();
+            $table->string('committee_role')->nullable();
             $table->timestamps();
         });
     }

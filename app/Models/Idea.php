@@ -74,10 +74,7 @@ class Idea extends Model
 }
 
 
-    public function notifications()
-    {
-        return $this->hasMany(Notification::class);
-    }
+
 
         public function improvementPlans()
     {

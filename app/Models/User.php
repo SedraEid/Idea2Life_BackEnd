@@ -19,11 +19,15 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
-    protected $fillable = [
+     protected $fillable = [
         'name',
         'email',
         'password',
-        'user_type',
+        'role',             
+        'phone',            
+        'profile_image',    
+        'bio',           
+        'committee_role',  
     ];
 
     
@@ -42,12 +46,7 @@ return $this->hasOne(IdeaOwner::class);
     {
         return $this->hasOne(CommitteeMember::class);
     }
-
-      public function profile()
-    {
-        return $this->hasOne(Profile::class);
-    }
-
+    
      public function wallet()
     {
         return $this->hasOne(Wallet::class);

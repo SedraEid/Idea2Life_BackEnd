@@ -151,7 +151,6 @@ public function store(Request $request, $idea_id)//ادخال المراحل م�
         foreach ($idea->committee->committeeMember as $member) {
             Notification::create([
                 'user_id' => $member->user_id,
-                'idea_id' => $idea->id,
                 'title' => "مرحلة جديدة ضمن فكرة '{$idea->title}'",
                 'message' => "تم إضافة مرحلة '{$validated['phase_name']}' بانتظار موافقة اللجنة.",
                 'type' => 'gantt_phase_committee',
@@ -335,7 +334,6 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)
     if ($idea->ideaowner) {
         Notification::create([
             'user_id' => $idea->ideaowner->user_id,
-            'idea_id' => $idea->id,
             'title' => "تم تحديث حالة الموافقة على مراحل فكرة '{$idea->title}'",
             'message' => "اللجنة قامت بتحديث حالة جميع المراحل: $statusMessage",
             'type' => 'gantt_all_phases_approval_updated',
@@ -429,7 +427,6 @@ public function updatePhaseReport(Request $request, Idea $idea, $gantt_id)
 
             Notification::create([
                 'user_id' => $idea->ideaowner?->user_id,
-                'idea_id' => $idea->id,
                 'title' => "خطة تحسين مطلوبة للفكرة '{$idea->title}'",
                 'message' => "تم إصدار 3 تقارير سلبية على الأقل، يرجى تقديم خطة تحسين خلال أسبوعين.",
                 'type' => 'improvement_plan_required',
@@ -440,9 +437,6 @@ public function updatePhaseReport(Request $request, Idea $idea, $gantt_id)
 
     Notification::create([
         'user_id' => $idea->ideaowner?->user_id,
-        'idea_id' => $idea->id,
-        'meeting_id' => $meeting->id,
-        'report_id' => $report->id,
         'title' => 'تقرير تقييم المرحلة تم تحديثه',
         'message' => 'تم تحديث تقرير تقييم المرحلة لفكرتك "' . $idea->title . '". يرجى الاطلاع عليه.',
         'type' => 'phase_evaluation_report_owner',
@@ -535,8 +529,6 @@ public function updateImprov(Request $request, $plan_id)//ملء خطة التح
         foreach ($plan->idea->committee->committeeMember as $member) {
             Notification::create([
                 'user_id' => $member->user_id,
-                'idea_id' => $plan->idea->id,
-                'meeting_id' => $meeting->id,
                 'title' => "خطة تحسين جديدة للمراجعة",
                 'message' => "قام صاحب الفكرة بملء خطة التحسين. يرجى مراجعتها في الاجتماع المقرر بتاريخ {$meetingDate->toDateTimeString()}",
                 'type' => 'improvement_plan_review',
@@ -615,7 +607,6 @@ public function respondToImprovementPlan(Request $request, $plan_id)//راي ا�
     $plan->update($validated);
     Notification::create([
         'user_id' => $plan->idea->ideaowner->user_id,
-        'idea_id' => $plan->idea->id,
         'title' => "تم الرد على خطة التحسين لفكرتك '{$plan->idea->title}'",
         'message' => "اللجنة قامت بتقييم خطة التحسين الخاصة بك. النتيجة: {$validated['status']}. تحقق من الملاحظات والتعليقات.",
         'type' => 'improvement_plan_feedback',
@@ -707,9 +698,6 @@ public function requestFundingGantt(Request $request, $gantt_id)
     foreach ($idea->committee->committeeMember as $member) {
         Notification::create([
             'user_id' => $member->user_id,
-            'idea_id' => $idea->id,
-            'meeting_id' => $meeting->id,
-            'report_id' => $report->id,
             'title' => "طلب تمويل جديد للمرحلة '{$gantt->phase_name}'",
             'message' => "تم تقديم طلب تمويل بمبلغ {$validated['requested_amount']} من قبل صاحب الفكرة.",
             'type' => 'funding_request',
@@ -792,9 +780,6 @@ public function requestFundingTask(Request $request, $task_id)
        foreach ($idea->committee->committeeMember as $member) {
         Notification::create([
             'user_id' => $member->user_id,
-            'idea_id' => $idea->id,
-            'meeting_id' => $meeting->id,
-            'report_id' => $report->id,
             'title' => "طلب تمويل جديد للمهمة '{$task->task_name}'",
             'message' => "تم تقديم طلب تمويل بمبلغ {$validated['requested_amount']} من قبل صاحب الفكرة.",
             'type' => 'funding_request',
@@ -955,9 +940,6 @@ public function evaluateFunding(Request $request, Funding $funding)
 
     Notification::create([
         'user_id' => $idea->ideaowner?->user_id,
-        'idea_id' => $idea->id,
-        'meeting_id' => $funding->meeting_id,
-        'report_id' => $report->id,
         'title' => 'تقرير تمويل جديد',
         'message' => 'تم إصدار تقرير تقييم التمويل لفكرتك "' . $idea->title . '" والحالة: ' . $validated['status'] . '.',
         'type' => 'funding_report_owner',
@@ -971,9 +953,6 @@ public function evaluateFunding(Request $request, Funding $funding)
     foreach ($committeeMembers as $member) {
         Notification::create([
             'user_id' => $member->user_id,
-            'idea_id' => $idea->id,
-            'meeting_id' => $funding->meeting_id,
-            'report_id' => $report->id,
             'title' => 'تقرير تمويل جديد',
             'message' => 'تم إصدار تقرير تمويل جديد للفكرة "' . $idea->title . '". الحالة: ' . $validated['status'] . '.',
             'type' => 'funding_report_committee',
@@ -984,9 +963,6 @@ public function evaluateFunding(Request $request, Funding $funding)
     if ($validated['status'] === 'approved') {
         Notification::create([
             'user_id' => $idea->ideaowner?->user_id,
-            'idea_id' => $idea->id,
-            'meeting_id' => $funding->meeting_id,
-            'report_id' => $report->id,
             'title' => 'تمت الموافقة على التمويل',
             'message' => 'مبروك! تمت الموافقة على تمويل فكرتك "' . $idea->title . '" وتم تحويل المبلغ إلى محفظتك.',
             'type' => 'funding_approved',

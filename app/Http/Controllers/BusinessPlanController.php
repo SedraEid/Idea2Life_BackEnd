@@ -446,9 +446,6 @@ public function advancedEvaluation(Request $request, Idea $idea)
     );
 Notification::create([
     'user_id' => $idea->ideaowner?->user_id, 
-    'idea_id' => $idea->id,
-    'meeting_id' => $report->meeting_id ?? null, 
-    'report_id' => $report->id,
     'title' => 'تقرير تقييم جديد',
     'message' => 'تم إصدار تقرير تقييم متقدم جديد لفكرتك "' . $idea->title . '". يرجى الاطلاع عليه.',
     'type' => 'advance_report_owner',
@@ -462,9 +459,6 @@ $committeeMembers = CommitteeMember::where('committee_id', $idea->committee_id)
 foreach ($committeeMembers as $member) {
     Notification::create([
         'user_id' => $member->user_id, 
-        'idea_id' => $idea->id,
-        'meeting_id' => $report->meeting_id ?? null,
-        'report_id' => $report->id,
         'title' => 'تقرير تقييم جديد',
         'message' => 'تم إصدار تقرير تقييم متقدم جديد للفكرة "' . $idea->title . '".',
         'type' => 'advance_report_committee',
