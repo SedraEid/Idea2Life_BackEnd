@@ -6,6 +6,7 @@ use App\Http\Controllers\FundingController;
 use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
 use App\Http\Controllers\ImprovementPlanController;
+use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
 use Illuminate\Http\Request;
@@ -67,7 +68,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::post('/ideas/{idea}/advanced-meeting', [MeetingController::class, 'scheduleAdvancedMeeting'])
     ->middleware('auth:sanctum'); //تحديد موعد الاجتماع المتقدم من قبل اللجنة 
 
-Route::middleware('auth:sanctum')->post('/ideas/{idea}/advanced-evaluation', [BusinessPlanController::class, 'advancedEvaluation']);//تقييم المتقدم لل BMC
+Route::middleware('auth:sanctum')->post('/ideas/{idea}/advanced-evaluation', [ReportController::class, 'advancedEvaluation']);//تقييم المتقدم لل BMC
 
 
 Route::get('/committee/bmcs', [BusinessPlanController::class, 'showAllBMCsForCommittee'])//عرض كل فكرة مع ال bmc التي تشرف عليها اللجنة 
@@ -172,3 +173,8 @@ Route::middleware('auth:sanctum')->group(function () {//طلب التمويل ل
 Route::middleware('auth:sanctum')->group(function () {//تمويل للمرحلة او للتاسك 
     Route::post('/funding/{funding}/evaluate/gantt/task', [GanttChartController::class, 'evaluateFunding']);
 });
+
+Route::middleware('auth:sanctum')->post('/ideas/{ideaId}/approve-launch', [LaunchController::class, 'approveLaunch']);
+//اخر تقرير لاطلاق المشروع 
+
+Route::get('/launched-projects', [LaunchController::class, 'launchedProjects']);

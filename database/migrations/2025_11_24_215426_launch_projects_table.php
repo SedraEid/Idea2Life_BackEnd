@@ -6,22 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-
-      public function up(): void
+     public function up(): void
     {
-        Schema::create('launches_projects', function (Blueprint $table) {
+        Schema::create('launch_projects', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('idea_id');
-            $table->enum('status', ['pending', 'approved', 'rejected', 'launched'])
-                  ->default('pending');
+            $table->enum('status', ['pending', 'approved', 'rejected', 'launched'])->default('pending');
             $table->dateTime('launch_date')->nullable();
             $table->timestamps();
-            $table->foreign('idea_id')
-                  ->references('id')->on('ideas')
-                  ->onDelete('cascade');
+            $table->foreign('idea_id')->references('id')->on('ideas')->onDelete('cascade');
         });
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
         Schema::dropIfExists('launches_projects');
