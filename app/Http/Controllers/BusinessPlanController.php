@@ -259,46 +259,6 @@ public function showAllBMCsForCommittee(Request $request)
 
 
 
-
-public function scheduleAdvancedMeeting(Request $request, Idea $idea)
-{
-    $user = $request->user();
-
-    if (!$user->committeeMember || $user->committeeMember->committee_id != $idea->committee_id) {
-        return response()->json(['message' => 'ليس لديك صلاحية جدولة الاجتماع لهذه الفكرة.'], 403);
-    }
-
-    $ideaOwner = $idea->ideaowner;
-    if (!$ideaOwner) {
-        return response()->json(['message' => 'الفكرة لا تملك صاحب.'], 404);
-    }
-
-    $meeting = $idea->meetings()->where('type', 'business_plan_review')->first();
-    if ($meeting) {
-        $meeting->update([
-            'meeting_date' => $request->meeting_date ?? $meeting->meeting_date,
-            'notes' => $request->notes ?? $meeting->notes,
-            'meeting_link' => $request->meeting_link ?? $meeting->meeting_link,
-        ]);
-    } else {
-        $meeting = $idea->meetings()->create([
-            'idea_id' => $idea->id,
-            'owner_id' => $ideaOwner->id,
-            'committee_id' => $idea->committee_id,
-            'meeting_date' => $request->meeting_date ?? now()->addDays(3),
-            'meeting_link' => $request->meeting_link ?? null,
-            'notes' => $request->notes ?? null,
-            'requested_by' => 'committee',
-            'type' => 'business_plan_review',
-        ]);
-    }
-    return response()->json([
-        'message' => 'تم جدولة الاجتماع للتقييم المتقدم بنجاح.',
-        'meeting' => $meeting,
-    ]);
-}
-
-
 public function advancedEvaluation(Request $request, Idea $idea)
 {
     $user = $request->user();
@@ -606,51 +566,6 @@ public function showOwnerIdeaBMC(Request $request, $idea_id)//جلب ال BMC ل
             ] : null,
         ]
     ], 200);
-}
-
-
-
-
-
-public function upcomingCommitteeMeetings(Request $request)//عرض الاجتماعات الخاصة باللجنة 
-{
-    $user = $request->user();
-
-    if (!$user->committeeMember) {
-        return response()->json([
-            'message' => 'أنت لست عضو لجنة.'
-        ], 403);
-    }
-
-    $committeeId = $user->committeeMember->committee_id;
-
-    $meetings = Meeting::with(['idea:id,title', 'committee:id,committee_name'])
-        ->where('committee_id', $committeeId)
-        ->where('meeting_date', '>=', now())
-        ->orderBy('meeting_date', 'asc')
-        ->get()
-        ->map(function ($meeting) {
-            $hoursLeft = $meeting->meeting_date->diffInHours(now());
-            $isSoon = $hoursLeft <= 24;
-
-            return [
-                'id' => $meeting->id,
-                'idea_title' => $meeting->idea?->title,
-                'committee_name' => $meeting->committee?->committee_name,
-                'meeting_date' => $meeting->meeting_date->format('Y-m-d H:i'),
-                'meeting_link' => $meeting->meeting_link,
-                'notes' => $meeting->notes,
-                'requested_by' => $meeting->requested_by,
-                'type' => $meeting->type,
-                'hours_left' => $hoursLeft,
-                'is_soon' => $isSoon,
-            ];
-        });
-
-    return response()->json([
-        'message' => 'تم جلب الاجتماعات القادمة الخاصة باللجنة بنجاح.',
-        'upcoming_meetings' => $meetings
-    ]);
 }
 
 

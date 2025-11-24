@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\GanttChart;
+use App\Models\Idea;
+use App\Models\Meeting;
+use App\Models\Notification;
 use App\Models\Report;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -203,6 +206,12 @@ private function updateGanttProgress(GanttChart $gantt)
         ? round($totalProgress / $totalWeight, 2)
         : 0;
 
+     if ($gantt->progress >= 100) {
+        $gantt->status = 'completed';
+    } else {
+        $gantt->status = 'in_progress';
+    }
+
     $gantt->save();
 }
 
@@ -227,4 +236,14 @@ $gantt = $task->gantt;
 $this->updateGanttProgress($gantt);      
   return response()->json(['message' => 'تم حذف المهمة بنجاح']);
     }
+
+
+
+
+
+
+
+
+
+
 }

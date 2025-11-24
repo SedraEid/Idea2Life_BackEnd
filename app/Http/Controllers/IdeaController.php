@@ -325,7 +325,7 @@ private function getNextStep($status)
 
 
 
-public function committeeIdeas(Request $request)
+public function committeeIdeas(Request $request)//يعرض الافكار التي تشرف عليها اللجنة 
 {
     $user = $request->user();
 
@@ -342,7 +342,7 @@ public function committeeIdeas(Request $request)
 }
 
 
-public function getUserIdeasWithCommittee(Request $request)
+public function getUserIdeasWithCommittee(Request $request)//يعرض اللجنة و الاعضاء التي تشرف على فكرة لصاحب الفكرة
 {
     $user = $request->user();
 
@@ -391,7 +391,7 @@ public function getUserIdeasWithCommittee(Request $request)
 
 
 
-public function getIdeasWithCommittee()
+public function getIdeasWithCommittee()//جلب كل الافكار مع اللجنة المشرفة على كل فكرة
 {
     $ideas = Idea::with([
         'committee.committeeMember.user',  
@@ -479,254 +479,6 @@ public function myIdeas(Request $request) // تابع جلب افكار صاحب
         'ideas' => $data
     ]);
 }
-
-
-
-
-
-public function getIdeaRoadmap(Request $request, Idea $idea)//جلب خارطة الطريق لكل فكرة
-{
-    $user = $request->user();
-
-    $ideaOwner = $idea->ideaowner;
-    $isOwner = $ideaOwner && $ideaOwner->user_id === $user->id;
-    $isCommittee = $user->committeeMember && $user->committeeMember->committee_id === $idea->committee_id;
-
-    if (!$isOwner && !$isCommittee) {
-        return response()->json(['message' => 'ليس لديك صلاحية الوصول لخارطة الطريق.'], 403);
-    }
-
-    $roadmap = $idea->roadmap;
-
-    if (!$roadmap) {
-        return response()->json(['message' => 'لا توجد خارطة طريق لهذه الفكرة.'], 404);
-    }
-
-    return response()->json([
-        'idea_id' => $idea->id,
-        'title' => $idea->title,
-        'roadmap' => [
-            'current_stage' => $roadmap->current_stage,
-            'description' => $roadmap->stage_description,
-            'progress_percentage' => $roadmap->progress_percentage,
-            'last_update' => $roadmap->last_update,
-            'next_step' => $roadmap->next_step,
-        ]
-    ]);
-}
-
-
-
-
-
-public function upcomingMeetings(Request $request, $idea_id)//جلب الاجتماعات الخاصة بصاحب الفكرة 
-{
-    $user = $request->user();
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-    if (!$ideaOwner) {
-        return response()->json([
-            'message' => 'المستخدم ليس لديه أفكار بعد.'
-        ], 404);
-    }
-
-    $idea = $ideaOwner->ideas()->where('id', $idea_id)->first();
-    if (!$idea) {
-        return response()->json([
-            'message' => 'هذه الفكرة لا تتبع لك أو غير موجودة.',
-        ], 404);
-    }
-
-    $meetings = Meeting::with(['idea:id,title', 'committee:id,committee_name'])
-        ->where('owner_id', $ideaOwner->id)
-        ->where('idea_id', $idea_id)
-        ->where('meeting_date', '>=', now())
-        ->orderBy('meeting_date', 'asc')
-        ->get()
-           ->map(function ($meeting) {
-            $hoursLeft = $meeting->meeting_date->diffInHours(now());
-            $isSoon = $hoursLeft <= 24;
-
-            return [
-                'id' => $meeting->id,
-                'idea_title' => $meeting->idea?->title,
-                'committee_name' => $meeting->committee?->committee_name,
-                'meeting_date' => $meeting->meeting_date->format('Y-m-d H:i'),
-                'meeting_link' => $meeting->meeting_link,
-                'notes' => $meeting->notes,
-                'requested_by' => $meeting->requested_by,
-                'type' => $meeting->type,
-                'hours_left' => $hoursLeft,
-                'is_soon' => $isSoon,
-            ];
-        });
-
-    return response()->json([
-        'message' => 'تم جلب الاجتماعات القادمة لهذه الفكرة بنجاح.',
-        'idea_id' => $idea_id,
-        'upcoming_meetings' => $meetings
-    ]);
-}
-
-
-
-public function committee_Ideas(Request $request) // عرض الأفكار مع الاجتماعات وصاحب الفكرة للجنة
-{
-    $user = $request->user();
-
-    if (!$user->committeeMember) {
-        return response()->json([
-            'message' => 'أنت لست عضوًا في لجنة.'
-        ], 403);
-    }
-
-    $committeeId = $user->committeeMember->committee_id;
-
-    $ideas = \App\Models\Idea::with([
-            'ideaowner.user', 
-            'meetings'
-        ])
-        ->where('committee_id', $committeeId)
-        ->get()
-        ->map(function ($idea) {
-            $owner = $idea->ideaowner?->user;
-
-            return [
-                'idea_id' => $idea->id,
-                'title' => $idea->title,
-                'description' => $idea->description,
-                'status' => $idea->status,
-                'meeting' => $idea->meetings->map(function ($m) {
-                    return [
-                        'meeting_id' => $m->id,
-                        'meeting_date' => $m->meeting_date?->format('Y-m-d H:i'),
-                        'meeting_link' => $m->meeting_link,
-                        'notes' => $m->notes,
-                        'requested_by' => $m->requested_by,
-                        'type' => $m->type,
-                    ];
-                }),
-                'idea_owner' => [
-                    'name' => $owner?->name,
-                    'email' => $owner?->email,
-                    'phone' => $owner?->phone,
-                    'profile_image' => $owner?->profile_image,
-                    'bio' => $owner?->bio,
-                    'user_type' => $owner?->role, 
-                ],
-            ];
-        });
-
-    return response()->json([
-        'message' => 'تم جلب جميع الأفكار التي تشرف عليها اللجنة بنجاح.',
-        'ideas' => $ideas,
-    ]);
-}
-
-
-
-
-
-public function updateMeeting(Request $request, $meetingId)//تحديد رابط الاجتماع و الملاحظات من قبل اللجنة 
-{
-    $user = $request->user();
-
-    if (!$user->committeeMember) {
-        return response()->json(['message' => 'أنت لست عضو لجنة.'], 403);
-    }
-
-    $meeting = Meeting::find($meetingId);
-    if (!$meeting) {
-        return response()->json(['message' => 'الاجتماع غير موجود.'], 404);
-    }
-
-    if ($meeting->committee_id != $user->committeeMember->committee_id) {
-        return response()->json(['message' => 'ليس لديك صلاحية تعديل هذا الاجتماع.'], 403);
-    }
-
-    $validatedData = $request->validate([
-        'meeting_link' => 'nullable|url',
-        'notes' => 'nullable|string',
-        'meeting_date' => 'nullable|date|after_or_equal:today',
-    ]);
-
-    $meeting->update([
-        'meeting_link' => $validatedData['meeting_link'] ?? $meeting->meeting_link,
-        'notes' => $validatedData['notes'] ?? $meeting->notes,
-        'meeting_date' => $validatedData['meeting_date'] ?? $meeting->meeting_date, 
-    ]);
-
-    return response()->json([
-        'message' => 'تم تحديث رابط الاجتماع والملاحظات ',
-        'meeting' => $meeting,
-    ]);
-}
-
-
-
-public function ownerIdeaReports(Request $request, $idea_id)//جلب التقارير لصاحب الفكرة و للفكرة التي هو بها الان 
-{
-    $user = $request->user();
-    $ideaOwner = $user->ideaOwner;
-    if (!$ideaOwner) {
-        return response()->json([
-            'message' => 'هذا المستخدم لا يملك أي فكرة بعد.'
-        ], 404);
-    }
-    $idea = $ideaOwner->ideas()->where('id', $idea_id)->first();
-
-    if (!$idea) {
-        return response()->json([
-            'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لك.',
-        ], 404);
-    }
-    $reports = \App\Models\Report::where('idea_id', $idea_id)
-        ->with([
-            'idea:id,title,status',
-            'committee:id,committee_name'
-        ])
-        ->orderBy('created_at', 'desc')
-        ->get();
-
-    if ($reports->isEmpty()) {
-        return response()->json([
-            'message' => 'لا توجد تقارير لهذه الفكرة.',
-            'total_reports' => 0,
-            'data' => [],
-        ], 200);
-    }
-
-    $formattedReports = $reports->map(function ($report) {
-        return [
-            'report_id' => $report->id,
-            'report_type' => $report->report_type,
-            'description' => $report->description,
-            'evaluation_score' => $report->evaluation_score,
-            'status' => $report->status,
-            'idea' => [
-                'id' => $report->idea->id,
-                'title' => $report->idea->title,
-                'status' => $report->idea->status,
-            ],
-            'committee' => $report->committee?->committee_name,
-            'strengths' => $report->strengths,
-            'weaknesses' => $report->weaknesses,
-            'recommendations' => $report->recommendations,
-            'created_at' => $report->created_at->format('Y-m-d H:i'),
-        ];
-    });
-
-    return response()->json([
-        'message' => 'تم جلب جميع التقارير الخاصة بهذه الفكرة.',
-        'total_reports' => $formattedReports->count(),
-        'data' => $formattedReports,
-    ], 200);
-}
-
-
-
-
- 
-
 
 
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Committee;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -97,6 +98,72 @@ public function updateProfile(Request $request)
     ], 200);
 }
 
+
+
+public function updateCommitteeDescription(Request $request, $committeeId)//وضع الوصف الخاص باللجنة
+{
+    $user = $request->user();
+
+    if (!$user->committeeMember) {
+        return response()->json(['message' => 'أنت لست عضواً في أي لجنة.'], 403);
+    }
+    $committeeMember = $user->committeeMember;
+
+    if ($committeeMember->committee_id != $committeeId) {
+        return response()->json(['message' => 'لا يمكنك تعديل لجنة لا تنتمي إليها.'], 403);
+    }
+    $validated = $request->validate([
+        'description' => 'required|string|min:10|max:1000',
+    ]);
+    $committee = \App\Models\Committee::findOrFail($committeeId);
+    $committee->description = $validated['description'];
+    $committee->save();
+    return response()->json([
+        'message' => 'تم تحديث وصف اللجنة بنجاح.',
+        'committee' => $committee
+    ]);
+}
+
+
+public function myCommitteeDashboard(Request $request)//يعرض لجنتي مع دوري باللجنة 
+{
+    $user = $request->user();
+    if (!$user->committeeMember) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'أنت لست عضوًا في أي لجنة.'
+        ], 403);
+    }
+    $committee = Committee::with('committeeMember.user')
+        ->find($user->committeeMember->committee_id);
+
+    if (!$committee) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'اللجنة غير موجودة.'
+        ], 404);
+    }
+    $data = [
+        'committee_name' => $committee->committee_name,
+        'description' => $committee->description,
+        'status' => $committee->status,
+        'my_role' => $user->committeeMember->role_in_committee,
+        'members' => $committee->committeeMember->map(function ($member) use ($user) {
+            return [
+                'id' => $member->user->id,
+                'name' => $member->user->name,
+                'email' => $member->user->email,
+                'role_in_committee' => $member->role_in_committee,
+                'is_me' => $member->user->id === $user->id,
+            ];
+        }),
+    ];
+
+    return response()->json([
+        'status' => 'success',
+        'data' => $data
+    ]);
+}
 
 
 

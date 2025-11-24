@@ -5,10 +5,14 @@ use App\Http\Controllers\BusinessPlanController;
 use App\Http\Controllers\FundingController;
 use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
+use App\Http\Controllers\ImprovementPlanController;
+use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RoadmapController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
 
@@ -22,10 +26,13 @@ Route::post('/login/committee-member', [AuthController::class, 'loginCommitteeMe
 Route::middleware('auth:sanctum')->get('/profile', [ProfileController::class, 'showProfile']);//عرض البروفايل لصاحب الفكرة
 Route::middleware('auth:sanctum')->get('/profile_member', [ProfileController::class, 'showCommitteeMemberProfile']);//عرض البروفايل لاعضاء اللجنة 
 
+Route::get('/my-committee/dashboard', [ProfileController::class, 'myCommitteeDashboard'])//يعرض لي لجنتي مع دوري بللجنة و باقي الاعضاء
+    ->middleware('auth:sanctum'); 
+
 Route::middleware('auth:sanctum')->group(function () {//تعديل البروفايل  
     Route::post('/profile/update', [ProfileController::class, 'updateProfile']);
 });
-Route::middleware('auth:sanctum')->put('/committees/{committeeId}/description', [AuthController::class, 'updateCommitteeDescription']);//تعديل الوصف الخاص باللجنة 
+Route::middleware('auth:sanctum')->put('/committees/{committeeId}/description', [ProfileController::class, 'updateCommitteeDescription']);//تعديل الوصف الخاص باللجنة 
 
 Route::middleware('auth:sanctum')->group(function () {//اضافة فكرة 
     Route::post('/ideas', [IdeaController::class, 'store']);
@@ -43,27 +50,25 @@ Route::get('/ideas/with-committee', [IdeaController::class, 'getIdeasWithCommitt
 
 Route::middleware('auth:sanctum')->get('/my_ideas', [IdeaController::class, 'myIdeas']);//جلب افكاري مع اللجنة المشرفة عليها
 
-Route::middleware('auth:sanctum')->get('/ideas/{idea}/roadmap', [IdeaController::class, 'getIdeaRoadmap']);//جلب خارطة الطريق للفكرة
+Route::middleware('auth:sanctum')->get('/ideas/{idea}/roadmap', [RoadmapController::class, 'getIdeaRoadmap']);//  جلب خارطة الطريق للفكرة لصاحب الفكرة و اللجنة
 
-Route::middleware('auth:sanctum')->get('/idea/{idea_id}/reports', [IdeaController::class, 'ownerIdeaReports']);//جلب التقارير لصاحب الفكرة
+Route::middleware('auth:sanctum')->get('/idea/{idea_id}/reports', [ReportController::class, 'ownerIdeaReports']);//جلب التقارير لصاحب الفكرة
 
 
 Route::middleware('auth:sanctum')->get('/idea/{idea_id}/meetings/upcoming', //يعرض لصاحب الفكرة الاجتماعات
-    [IdeaController::class, 'upcomingMeetings']);
+    [MeetingController::class, 'upcomingMeetings']);
 
 Route::middleware('auth:sanctum')->group(function () {
     // عرض كل الأفكار التابعة للجنة
-    Route::get('/committee/ideas', [IdeaController::class, 'committee_Ideas']);
-    Route::put('/committee/meetings/{meeting}', [IdeaController::class, 'updateMeeting']);//وضع اللينك و الملاحظات للاجتماع من قبل اللجنة 
+    Route::get('/committee/ideas', [MeetingController::class, 'committee_Ideas_meetings']);
+    Route::put('/committee/meetings/{meeting}', [MeetingController::class, 'updateMeeting']);//وضع اللينك و الملاحظات للاجتماع من قبل اللجنة 
   
 });
-Route::post('/ideas/{idea}/advanced-meeting', [BusinessPlanController::class, 'scheduleAdvancedMeeting'])
+Route::post('/ideas/{idea}/advanced-meeting', [MeetingController::class, 'scheduleAdvancedMeeting'])
     ->middleware('auth:sanctum'); //تحديد موعد الاجتماع المتقدم من قبل اللجنة 
 
 Route::middleware('auth:sanctum')->post('/ideas/{idea}/advanced-evaluation', [BusinessPlanController::class, 'advancedEvaluation']);//تقييم المتقدم لل BMC
 
-Route::get('/my-committee/dashboard', [AuthController::class, 'myCommitteeDashboard'])//يعرض لي لجنتي مع دوري بللجنة و باقي الاعضاء
-    ->middleware('auth:sanctum'); 
 
 Route::get('/committee/bmcs', [BusinessPlanController::class, 'showAllBMCsForCommittee'])//عرض كل فكرة مع ال bmc التي تشرف عليها اللجنة 
     ->middleware('auth:sanctum');
@@ -73,7 +78,7 @@ Route::middleware('auth:sanctum')->post('/ideas/{idea}/update-bmc', [BusinessPla
 Route::middleware('auth:sanctum')->get('/idea/{idea_id}/bmc', [BusinessPlanController::class, 'showOwnerIdeaBMC']);
 //عرض ال bmc لصاحب الفكرة
 
-Route::middleware('auth:sanctum')->get('/committee/upcoming-meetings', [BusinessPlanController::class, 'upcomingCommitteeMeetings']); //عرض الاجتماعات للجنة
+Route::middleware('auth:sanctum')->get('/committee/upcoming-meetings', [MeetingController::class, 'upcomingCommitteeMeetings']); //عرض الاجتماعات للجنة
 
 Route::middleware('auth:sanctum')->get('/my_wallet', [WalletController::class, 'getMyWallet']);//جلب المحفظة لاي مستخدم في النظام
 
@@ -131,7 +136,7 @@ Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsR
 
 Route::middleware('auth:sanctum')->group(function () {
     // تحديث تقرير تقييم المرحلة
-    Route::put('/ideas/{idea}/phase-reports/{gantt_id}', [GanttChartController::class, 'updatePhaseReport']);
+    Route::put('/ideas/{idea}/phase-reports/{gantt_id}', [ReportController::class, 'updatePhaseReport']);
 });
 
 //رفض او قبول الغانت تشارت من قبل اللجنة المشرفة 
@@ -139,24 +144,24 @@ Route::middleware('auth:sanctum')->post('/ideas/{idea}/gantt/approve-or-reject',
 
 
 Route::middleware('auth:sanctum')->get('/improvement-plan/{idea_id}', //جلب خطة التحسين لكي يماؤها صاحب الفكرة لاحقا
-    [GanttChartController::class, 'getImprovementPlan']
+    [ImprovementPlanController::class, 'getImprovementPlan']
 );
 
 
 Route::middleware('auth:sanctum')->group(function () {//ملئ خطة التحسين من قبل صاحب الفكرة 
-    Route::put('/improvement-plans/{plan}', [GanttChartController::class, 'updateImprov']);
+    Route::put('/improvement-plans/{plan}', [ImprovementPlanController::class, 'updateImprov']);
 });
 
 
 Route::middleware('auth:sanctum')->get(//جلب خطة التحسين التي كتبها صاحب الفكرة و عرضها للجنة المشرفة 
     '/committee/idea/{idea_id}/improvement-plan',
-    [GanttChartController::class, 'getIdeaImprovementPlanForCommittee']
+    [ImprovementPlanController::class, 'getIdeaImprovementPlanForCommittee']
 );
 
 
 Route::middleware('auth:sanctum')->group(function () {
     // رد اللجنة على خطة التحسين
-    Route::post('/improvement-plans/{plan_id}/respond', [GanttChartController::class, 'respondToImprovementPlan']);
+    Route::post('/improvement-plans/{plan_id}/respond', [ImprovementPlanController::class, 'respondToImprovementPlan']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {//طلب التمويل لمرحلة او لتاسك 
