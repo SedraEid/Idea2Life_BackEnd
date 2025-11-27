@@ -23,7 +23,6 @@ return new class extends Migration
             $table->text('justification')->nullable(); // سبب طلب التمويل
 
             $table->foreignId('report_id')->nullable()->constrained('reports')->onDelete('set null'); 
-            $table->boolean('requirements_verified')->default(false); //هل تم التحقق من الشروط من قبل اللجنة
             $table->text('committee_notes')->nullable();
 
             $table->decimal('approved_amount', 12, 2)->nullable(); // المبلغ الموافق عليه فعليًا

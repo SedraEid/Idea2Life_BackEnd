@@ -45,16 +45,6 @@ class TaskController extends Controller
         if (!$gantt->idea || !$gantt->idea->ideaowner || $gantt->idea->ideaowner->user_id != $user->id) {
             return response()->json(['message' => 'لا يمكنك إضافة مهام إلى هذه المرحلة لأنها لا تخصك.'], 403);
         }
-        
-    $hasPendingImprovementPlan = $gantt->idea->improvementPlans()
-        ->where('status', 'pending')
-        ->exists();
-
-    if ($hasPendingImprovementPlan) {
-        return response()->json([
-            'message' => 'لا يمكنك إضافة مهام جديدة حالياً. هناك خطة تحسين معلقة يجب إعدادها ورفعها لإقناع اللجنة بجدّيتك في تطوير الفكرة.'
-        ], 403);
-    }
 
         $request->validate([
             'task_name' => 'required|string|max:255',
@@ -86,96 +76,60 @@ class TaskController extends Controller
     /**
      *  تعديل تاسك
      */
- public function update(Request $request, $id)
+
+public function update(Request $request, $task_id)
 {
     $user = $request->user();
-    $task = Task::with('gantt.idea.ideaowner')->findOrFail($id);
-
-    if (
-        !$task->gantt ||
-        !$task->gantt->idea ||
-        !$task->gantt->idea->ideaowner ||
-        $task->gantt->idea->ideaowner->user_id != $user->id
-    ) {
+    $task = Task::with('gantt.idea.ideaowner')->findOrFail($task_id);
+    $idea = $task->gantt->idea;
+    $gantt = $task->gantt;
+    if (!$idea || !$idea->ideaowner || $idea->ideaowner->user_id != $user->id) {
         return response()->json(['message' => 'لا يمكنك تعديل هذه المهمة لأنها لا تخصك.'], 403);
     }
 
-    $idea = $task->gantt->idea;
-    $hasPendingImprovementPlan = $idea->improvementPlans()
-        ->where('status', 'pending')
-        ->exists();
-
-    if ($hasPendingImprovementPlan) {
+    // التحقق من عدد المراحل السيئة
+    $badPhasesCount = $idea->ganttCharts()->where('failure_count', 1)->count();
+    if ($badPhasesCount >= 3) {
         return response()->json([
-            'message' => 'لا يمكنك تعديل نسبة الإنجاز في الوقت الحالي. يجب إعداد ورفع خطة تحسين لإقناع اللجنة بجدّيتك في تطوير الفكرة قبل استكمال العمل.'
+            'message' => 'لا يمكنك تعديل المهام حالياً لأن هناك 3 مراحل سيئة. يجب دفع المبلغ الجزائي أو المشروع قد يُلغى.'
         ], 403);
     }
 
-    $previousPhase = GanttChart::where('idea_id', $idea->id)
-        ->where('id', '<', $task->gantt->id)
-        ->orderBy('id', 'desc')
-        ->first();
+    $validated = $request->validate([
+        'progress_percentage' => 'sometimes|numeric|min:0|max:100',
+        'attachments' => 'sometimes|array',
+        'attachments.*' => 'file|mimes:pdf,jpg,png,docx|max:5120',
+    ]);
 
-    if ($previousPhase) {
-        $previousReport = Report::where('idea_id', $idea->id)
-            ->where('report_type', 'phase_evaluation')
-            ->whereHas('meeting', function ($query) use ($previousPhase) {
-                $query->where('gantt_chart_id', $previousPhase->id);
-            })
-            ->first();
-
-        if (!$previousReport) {
-            return response()->json([
-                'message' => 'لا يمكنك تعديل مهام هذه المرحلة قبل أن يتم تقييم المرحلة السابقة وعقد اجتماع اللجنة الخاص بها.'
-            ], 403);
+    if ($request->hasFile('attachments')) {
+        $uploadedFiles = [];
+        foreach ($request->file('attachments') as $file) {
+            $path = $file->store('task_attachments');
+            $uploadedFiles[] = $path;
         }
+
+        $existing = $task->attachments;
+        if (!is_array($existing)) {
+            $existing = $existing ? json_decode($existing, true) : [];
+            if (!is_array($existing)) $existing = [];
+        }
+
+        $validated['attachments'] = array_merge($existing, $uploadedFiles);
     }
 
-    $approved = $task->gantt->approval_status === 'approved';
-
-    $allFields = ['task_name', 'description', 'start_date', 'end_date', 'priority', 'progress_percentage'];
-    $allowedFields = $approved ? ['progress_percentage'] : $allFields;
-
-    $attemptedFields = array_keys($request->all());
-    $notAllowedFields = array_diff($attemptedFields, $allowedFields);
-
-    if ($approved && !empty($notAllowedFields)) {
-        return response()->json([
-            'message' => 'تمت الموافقة على المرحلة من قبل اللجنة، لا يمكنك تعديل هذه الحقول: ' . implode(', ', $notAllowedFields)
-        ], 403);
-    }
-
-    $request->validate(array_reduce($allowedFields, function ($carry, $field) {
-        if ($field === 'progress_percentage') $carry[$field] = 'sometimes|integer|min:0|max:100';
-        elseif ($field === 'priority') $carry[$field] = 'sometimes|integer|min:1|max:5';
-        elseif ($field === 'start_date') $carry[$field] = 'sometimes|date';
-        elseif ($field === 'end_date') $carry[$field] = 'sometimes|date|after_or_equal:start_date';
-        else $carry[$field] = 'sometimes|string|max:255';
-        return $carry;
-    }, []));
-
-    $task->fill($request->only($allowedFields));
-
-    if ($request->has('progress_percentage')) {
-        if ($task->progress_percentage == 0) $task->status = 'pending';
-        elseif ($task->progress_percentage < 100) $task->status = 'in_progress';
-        else $task->status = 'completed';
-    }
-
-    $task->save();
-$this->updateGanttProgress($task->gantt);
-
+    $task->update($validated);
 
     return response()->json([
-        'message' => 'تم تحديث المهمة بنجاح.',
-        'task' => $task
+        'message' => 'تم تحديث المهمة بنجاح',
+        'data' => $task
     ]);
 }
 
 
 
 
-private function updateGanttProgress(GanttChart $gantt)
+
+private function updateGanttProgress(GanttChart $gantt)//تعديل نسية الانجاز في كل مرحة حسب التاسكات المرتبطة بالمرحلة 
 {
     $tasks = $gantt->tasks()->get();
 
@@ -221,29 +175,19 @@ private function updateGanttProgress(GanttChart $gantt)
     /**
      *  حذف تاسك
      */
-    public function destroy(Request $request, $id)
-    {
-        $user = $request->user();
-
-        $task = Task::with('gantt.idea.ideaowner')->findOrFail($id);
-
-        if (!$task->gantt || !$task->gantt->idea || !$task->gantt->idea->ideaowner || $task->gantt->idea->ideaowner->user_id != $user->id) {
-            return response()->json(['message' => 'لا يمكنك حذف هذه المهمة لأنها لا تخصك.'], 403);
-        }
-
-        $task->delete();
-$gantt = $task->gantt;
-$this->updateGanttProgress($gantt);      
-  return response()->json(['message' => 'تم حذف المهمة بنجاح']);
+public function destroy(Request $request, $id)
+{
+    $user = $request->user();
+    $task = Task::with('gantt.idea.ideaowner')->findOrFail($id);
+    if (!$task->gantt || !$task->gantt->idea || !$task->gantt->idea->ideaowner || $task->gantt->idea->ideaowner->user_id != $user->id) {
+        return response()->json(['message' => 'لا يمكنك حذف هذه المهمة لأنها لا تخصك.'], 403);
     }
-
-
-
-
-
-
-
-
-
-
+    $gantt = $task->gantt;
+    if ($gantt->approval_status === 'approved') {
+        return response()->json(['message' => 'لا يمكن حذف المهمة بعد موافقة اللجنة.'], 403);
+    }
+    $task->delete();
+    $this->updateGanttProgress($gantt);      
+    return response()->json(['message' => 'تم حذف المهمة بنجاح']);
+}
 }

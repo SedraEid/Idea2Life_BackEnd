@@ -10,7 +10,6 @@ class Meeting extends Model
     use HasFactory;
      protected $fillable = [
         'idea_id',
-        'gantt_chart_id',
         'owner_id',
         'committee_id',
         'meeting_date',
@@ -55,16 +54,6 @@ class Meeting extends Model
     return $this->hasOne(Funding::class);
 }
 
-    public function tasks()
-    {
-        return $this->hasMany(Task::class);
-    }
 
-
-
-    public function ganttChart()
-{
-    return $this->belongsTo(GanttChart::class, 'gantt_chart_id');
-}
 
 }

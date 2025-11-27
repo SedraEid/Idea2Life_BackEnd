@@ -24,10 +24,6 @@ return new class extends Migration
                   ->constrained('users')
                   ->onDelete('set null'); 
 
-            $table->foreignId('funding_id')->nullable()->constrained('fundings')->onDelete('set null');
-            $table->foreignId('meeting_id')->nullable()->constrained('meetings')->onDelete('set null');
-            $table->foreignId('report_id')->nullable()->constrained('reports')->onDelete('set null');
-
 
             $table->string('task_name', 255);
             $table->text('description')->nullable();
@@ -38,6 +34,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('progress_percentage')->default(0);
             $table->enum('status', ['pending', 'in_progress', 'completed'])->default('pending');
             $table->unsignedTinyInteger('priority')->default(1); // ترتيب المهمة ضمن المرحلة
+            $table->json('attachments')->nullable(); // ملفات مرفقة بالمرحلة
 
             $table->timestamps();
         });

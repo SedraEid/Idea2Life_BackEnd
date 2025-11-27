@@ -53,10 +53,6 @@ class Idea extends Model
         return $this->hasOne(BusinessPlan::class);
     }
 
-        public function evaluations()
-    {
-        return $this->hasMany(Evaluation::class);
-    }
 
     public function fundings()
     {
@@ -79,9 +75,5 @@ public function launchProject()
 }
 
 
-        public function improvementPlans()
-    {
-        return $this->hasMany(ImprovementPlan::class, 'idea_id');
-    }
 
 }

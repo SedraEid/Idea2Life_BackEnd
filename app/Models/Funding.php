@@ -17,9 +17,9 @@ class Funding extends Model
         'meeting_id',
         'requested_amount',
         'justification',
-        'report_id',
         'requirements_verified',
         'committee_notes',
+        'is_approved',
         'approved_amount',
         'payment_method',
         'transfer_date',
@@ -65,25 +65,16 @@ class Funding extends Model
         return $this->hasMany(WalletTransaction::class);
     }
 
-        public function tasks()
-    {
-        return $this->hasMany(Task::class);
-    }
+public function gantt()
+{
+    return $this->belongsTo(GanttChart::class, 'gantt_id');
+}
 
-     public function gantt()
-    {
-        return $this->belongsTo(GanttChart::class, 'gantt_id');
-    }
+public function task()
+{
+    return $this->belongsTo(Task::class, 'task_id');
+}
 
-    public function task()
-    {
-        return $this->belongsTo(Task::class, 'task_id');
-    }
-
-    public function evaluation()
-    {
-        return $this->hasOne(Evaluation::class, 'funding_id');
-    }
 
 
 }

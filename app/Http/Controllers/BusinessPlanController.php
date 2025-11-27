@@ -136,53 +136,25 @@ public function store(Request $request, Idea $idea)
         'report_id' => $report->id,
     ]);
 
-    $evaluation = \App\Models\Evaluation::where([
-        'idea_id' => $idea->id,
-        'committee_id' => $idea->committee_id,
-        'evaluation_type' => 'advanced',
-    ])->first();
-
-    if ($evaluation) {
-        $evaluation->update([
-            'business_plan_id' => $businessPlan->id,
-            'status' => 'pending',
-        ]);
-    } else {
-        \App\Models\Evaluation::create([
-            'idea_id' => $idea->id,
-            'committee_id' => $idea->committee_id,
-            'business_plan_id' => $businessPlan->id,
-            'evaluation_type' => 'advanced',
-            'score' => null,
-            'recommendation' => null,
-            'comments' => null,
-            'strengths' => null,
-            'weaknesses' => null,
-            'financial_analysis' => null,
-            'risks' => null,
-            'status' => 'pending',
-        ]);
-    }
+     $roadmapStages = [
+        "تقديم الفكرة",
+        "التقييم الأولي",
+        "التخطيط المنهجي",
+        "التقييم المتقدم قبل التمويل",
+        "التمويل",
+        "التنفيذ والتطوير",
+        "الإطلاق",
+        "المتابعة بعد الإطلاق",
+        "استقرار المشروع وانفصاله عن المنصة",
+    ];
 
     if ($idea->roadmap) {
-        $roadmapStages = [
-            "تقديم الفكرة",
-            "التقييم الأولي",
-            "الاجتماع التوجيهي",
-            "التخطيط المنهجي",
-            "التقييم المتقدم قبل التمويل",
-            "التمويل",
-            "التنفيذ والتطوير",
-            "الإطلاق",
-            "المتابعة بعد الإطلاق",
-            "استقرار المشروع وانفصاله عن المنصة",
-        ];
-
-        $currentStageIndex = 3; 
+        $currentStageName = 'التخطيط المنهجي';
+        $currentStageIndex = array_search($currentStageName, $roadmapStages);
         $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
 
         $idea->roadmap->update([
-            'current_stage' => 'التخطيط المنهجي',
+            'current_stage' => $currentStageName,
             'stage_description' => 'تم إنشاء أو تحديث خطة العمل والفكرة الآن في مرحلة التخطيط المنهجي',
             'progress_percentage' => $progressPercentage,
             'last_update' => now(),
@@ -190,10 +162,9 @@ public function store(Request $request, Idea $idea)
         ]);
     }
 
-       $idea->update([
+    $idea->update([
         'roadmap_stage' => 'خطة العمل قيد المراجعة',
     ]);
-
     return response()->json([
         'message' => 'تم إنشاء خطة العمل، الاجتماع، التقرير وسجل التقييم وتحديث المراحل بنجاح',
         'business_plan' => $businessPlan,
@@ -201,6 +172,7 @@ public function store(Request $request, Idea $idea)
         'report' => $report,
     ], 201);
 }
+
 
 
 
@@ -259,34 +231,28 @@ public function showAllBMCsForCommittee(Request $request)
 
 
 
-
-public function updateBMC(Request $request, Idea $idea)//تعديل ال bmc اذا كان التقييم اقل من 80
+public function updateBMC(Request $request, Idea $idea)//تعديل خطة العمل بعد التقييم الاقل من 80
 {
-   $user = $request->user();
-$ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
+    $user = $request->user();
+    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
 
-if (!$ideaOwner || $idea->owner_id != $ideaOwner->id) {
-    return response()->json([
-        'message' => 'ليس لديك صلاحية لتعديل خطة العمل لهذه الفكرة.'
-    ], 403);
-}   
-    $advancedEvaluation = $idea->evaluations()
-        ->where('evaluation_type', 'advanced')
-        ->latest()
-        ->first();
-
-    if (!$advancedEvaluation) {
-        return response()->json(['message' => 'لم يتم تقييم الفكرة بعد. لا يمكنك تعديل خطة العمل.'], 403);
+    if (!$ideaOwner || $idea->owner_id != $ideaOwner->id) {
+        return response()->json([
+            'message' => 'ليس لديك صلاحية لتعديل خطة العمل لهذه الفكرة.'
+        ], 403);
     }
-
-    $score = $advancedEvaluation->score;
-    if ($score < 50) {
-        return response()->json(['message' => 'نتيجة التقييم أقل من 50، لا يمكنك تعديل خطة العمل.'], 403);
+    $businessPlan = $idea->businessPlan()->first();
+    if (!$businessPlan) {
+        return response()->json([
+            'message' => 'لا توجد خطة عمل لهذه الفكرة، لا يمكن تعديل الـ BMC.'
+        ], 404);
     }
+    $score = $businessPlan->latest_score ?? 0;
     if ($score >= 80) {
-        return response()->json(['message' => 'تمت الموافقة على خطة العمل، لا يمكن تعديلها الآن.'], 403);
+        return response()->json([
+            'message' => 'تمت الموافقة على خطة العمل بشكل نهائي، لا يمكن تعديل الـ BMC بعد الآن.'
+        ], 403);
     }
-
     $validator = Validator::make($request->all(), [
         'key_partners' => 'nullable|string',
         'key_activities' => 'nullable|string',
@@ -302,41 +268,46 @@ if (!$ideaOwner || $idea->owner_id != $ideaOwner->id) {
     if ($validator->fails()) {
         return response()->json(['errors' => $validator->errors()], 422);
     }
+    $businessPlan->update(array_merge(
+        $validator->validated(),
+        ['status' => 'needs_revision']
+    ));
+    $roadmapStages = [
+        "تقديم الفكرة",
+        "التقييم الأولي",
+        "التخطيط المنهجي",
+        "التقييم المتقدم قبل التمويل",
+        "التمويل",
+        "التنفيذ والتطوير",
+        "الإطلاق",
+        "المتابعة بعد الإطلاق",
+        "استقرار المشروع وانفصاله عن المنصة",
+    ];
 
-    $businessPlan = $idea->businessPlan()->first();
-    if ($businessPlan) {
-        $businessPlan->update(array_merge(
-            $validator->validated(),
-            ['status' => 'needs_revision']
-        ));
-    } else {
-        $businessPlan = $idea->businessPlan()->create(array_merge(
-            $validator->validated(),
-            [
-                'idea_id' => $idea->id,
-                'owner_id' => $ideaOwner->id,
-                'committee_id' => $idea->committee_id ?? null,
-                'status' => 'needs_revision',
-            ]
-        ));
-    }
+    $currentStageName = "التخطيط المنهجي"; 
+    $currentStageIndex = array_search($currentStageName, $roadmapStages);
+    $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
 
     if ($idea->roadmap) {
-        $idea->roadmap()->update([
-            'stage_description' => 'تم تعديل خطة العمل بناءً على ملاحظات التقييم المتقدم. بانتظار إعادة المراجعة.',
+        $idea->roadmap->update([
+            'current_stage' => $currentStageName,
+            'stage_description' => 'تم تعديل خطة العمل بناءً على نتيجة التقييم المتقدم، وبانتظار إعادة المراجعة.',
+            'progress_percentage' => $progressPercentage,
             'last_update' => now(),
+            'next_step' => 'إعادة تقديم الخطة للتقييم المتقدم',
         ]);
     }
 
     $idea->update([
-        'roadmap_stage' => 'خطة العمل تحتاج إعادة مراجعة',
+        'roadmap_stage' => $currentStageName,
     ]);
 
     return response()->json([
-        'message' => 'تم تعديل خطة العمل بنجاح. يمكنك الآن إعادة تقديمها للمراجعة.',
+        'message' => 'تم تعديل خطة العمل بنجاح. يرجى إعادة تقديمها للمراجعة.',
         'business_plan' => $businessPlan,
     ]);
 }
+
 
 
 public function showOwnerIdeaBMC(Request $request, $idea_id)//جلب ال BMC لصاحب الفكرة و لفكرة محددة

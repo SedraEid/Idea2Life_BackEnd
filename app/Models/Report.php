@@ -51,20 +51,4 @@ class Report extends Model
         return $this->hasOne(BusinessPlan::class);
     }
 
-    public function funding()
-{
-    return $this->hasOne(Funding::class);
-}
-
-    public function tasks()
-    {
-        return $this->hasMany(Task::class);
-    }
-
-
-
-   public function improvementPlan()
-{
-    return $this->belongsTo(ImprovementPlan::class, 'improvement_plan_id');
-}
 }

@@ -40,11 +40,6 @@ class Committee extends Model
         return $this->hasMany(BusinessPlan::class);
     }
 
-     public function evaluations()
-    {
-        return $this->hasMany(Evaluation::class);
-    }
-
      public function fundings()
     {
         return $this->hasMany(Funding::class);

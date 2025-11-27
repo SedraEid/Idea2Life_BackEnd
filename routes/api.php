@@ -5,7 +5,6 @@ use App\Http\Controllers\BusinessPlanController;
 use App\Http\Controllers\FundingController;
 use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
-use App\Http\Controllers\ImprovementPlanController;
 use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
@@ -39,7 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {//اضافة فكرة
     Route::post('/ideas', [IdeaController::class, 'store']);
 });
 Route::middleware('auth:sanctum')->put('/ideas/{idea}', [IdeaController::class, 'update']);//تعديل الفكرة من قبل صاحبها بعد التقييم الضعيف
-Route::middleware('auth:sanctum')->post('/ideas/{idea}/evaluate', [IdeaController::class, 'evaluate']);//تقييم الفكرة من قبل اللجنة
+Route::middleware('auth:sanctum')->post('/ideas/{idea}/evaluate', [ReportController::class, 'evaluate']);//تقييم الفكرة من قبل اللجنة
 Route::middleware('auth:sanctum')->get('/committee/ideas', [IdeaController::class, 'committeeIdeas']);//عرض كل الافكار التي تشرف عليها اللجنة
 Route::middleware('auth:sanctum')->get('/my-committee', [IdeaController::class, 'getUserIdeasWithCommittee']);//عرض اللجان او اللجنة التي تشرف على فكرة صاحب الفكرة 
 
@@ -87,7 +86,7 @@ Route::middleware('auth:sanctum')->post('/ideas/{idea}/funding-request', [Fundin
 
 Route::middleware('auth:sanctum')->group(function () {
     //  إلغاء طلب التمويل من قبل صاحب الفكرة
-    Route::post('/ideas/{idea}/cancel-funding', [FundingController::class, 'cancelFundingRequest']);
+    Route::post('/ideas/{funding_id}/cancel-funding', [FundingController::class, 'cancelFundingRequest']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {//جلب طلبات التمويل للجنة 
@@ -109,7 +108,7 @@ Route::middleware('auth:sanctum')->get('/committee/funding-checks', [FundingCont
 
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/gantt-charts', [GanttChartController::class, 'index']); // صاحب الفكرة   )كل المراحل لكل أفكار المستخدم)
+    Route::get('/gantt-charts/{ideaId}', [GanttChartController::class, 'index']); // صاحب الفكرة كل المراحل لكل أفكار
     Route::post('/gantt-charts/{idea_id}', [GanttChartController::class, 'store']); // إنشاء مرحلة
     Route::put('/gantt-charts/{gantt_id}', [GanttChartController::class, 'update']); // تعديل مرحلة
     Route::delete('/gantt-charts/{id}', [GanttChartController::class, 'destroy']); // حذف مرحلة
@@ -123,10 +122,16 @@ Route::middleware('auth:sanctum')
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/gantt-charts/{gantt_id}/tasks', [TaskController::class, 'index']); // كل التاسكات داخل مرحلة
     Route::post('/gantt-charts/{gantt_id}/tasks', [TaskController::class, 'store']); // إنشاء تاسك
-    Route::put('/tasks/{id}', [TaskController::class, 'update']); // تعديل تاسك
+    Route::post('/tasks/{id}', [TaskController::class, 'update']); // تعديل تاسك
     Route::delete('/tasks/{id}', [TaskController::class, 'destroy']); // حذف تاسك
 });
 
+//اختبار اللجنة ان صاحب الفكرة انتهى من كتابة الغانت تشارت
+Route::middleware('auth:sanctum')->post('/ideas/{idea_id}/submit-timeline', [GanttChartController::class, 'submitFullTimeline']);
+
+
+//رفض او قبول الغانت تشارت من قبل اللجنة المشرفة 
+Route::middleware('auth:sanctum')->post('/ideas/{idea}/gantt/approve-or-reject', [GanttChartController::class, 'approveOrRejectAllPhases']);
 
 Route::middleware('auth:sanctum')->group(function () {
 Route::get('/notifications/owner', [NotificationController::class, 'ownerNotifications']);});//عرض الاشعارات للكل
@@ -134,36 +139,13 @@ Route::get('/notifications/owner', [NotificationController::class, 'ownerNotific
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);//لتحديث حالة القراءة
 
 
-
-Route::middleware('auth:sanctum')->group(function () {
-    // تحديث تقرير تقييم المرحلة
-    Route::put('/ideas/{idea}/phase-reports/{gantt_id}', [ReportController::class, 'updatePhaseReport']);
+Route::middleware('auth:sanctum')->group(function () {//تقييم المرحلة من قبل اللجنة
+    Route::post('/ideas/{idea}/phase-evaluation/{gantt_id}', [GanttChartController::class, 'evaluatePhase']);
 });
 
-//رفض او قبول الغانت تشارت من قبل اللجنة المشرفة 
-Route::middleware('auth:sanctum')->post('/ideas/{idea}/gantt/approve-or-reject', [GanttChartController::class, 'approveOrRejectAllPhases']);
+//دفع المبلغ المالي من قبل صاحب الفكرة بعد 3 تقييمات سيئة لكي يستطيع اكمال المشروع
+Route::middleware('auth:sanctum')->post('/gantt/{idea_id}/pay-penalty', [GanttChartController::class, 'payPenaltyForPhase']);
 
-
-Route::middleware('auth:sanctum')->get('/improvement-plan/{idea_id}', //جلب خطة التحسين لكي يماؤها صاحب الفكرة لاحقا
-    [ImprovementPlanController::class, 'getImprovementPlan']
-);
-
-
-Route::middleware('auth:sanctum')->group(function () {//ملئ خطة التحسين من قبل صاحب الفكرة 
-    Route::put('/improvement-plans/{plan}', [ImprovementPlanController::class, 'updateImprov']);
-});
-
-
-Route::middleware('auth:sanctum')->get(//جلب خطة التحسين التي كتبها صاحب الفكرة و عرضها للجنة المشرفة 
-    '/committee/idea/{idea_id}/improvement-plan',
-    [ImprovementPlanController::class, 'getIdeaImprovementPlanForCommittee']
-);
-
-
-Route::middleware('auth:sanctum')->group(function () {
-    // رد اللجنة على خطة التحسين
-    Route::post('/improvement-plans/{plan_id}/respond', [ImprovementPlanController::class, 'respondToImprovementPlan']);
-});
 
 Route::middleware('auth:sanctum')->group(function () {//طلب التمويل لمرحلة او لتاسك 
     Route::post('/funding/request/gantt/{gantt_id}', [GanttChartController::class, 'requestFundingGantt']);

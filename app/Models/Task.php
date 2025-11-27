@@ -15,9 +15,6 @@ class Task extends Model
         'idea_id',
         'gantt_id',
         'owner_id',
-        'funding_id',
-        'meeting_id',
-        'report_id',
         'task_name',
         'description',
         'start_date',
@@ -25,6 +22,7 @@ class Task extends Model
         'progress_percentage',
         'status',
         'priority',
+        'attachments'
     ];
 
     public function idea()
@@ -47,19 +45,10 @@ class Task extends Model
     return $this->belongsTo(Funding::class);
 }
 
-public function meeting()
+public function fundings()
 {
-    return $this->belongsTo(Meeting::class);
+    return $this->hasMany(Funding::class, 'task_id');
 }
 
-    public function report()
-    {
-        return $this->belongsTo(Report::class, 'report_id');
-    }
-
-       public function fundings()
-    {
-        return $this->hasMany(Funding::class, 'gantt_id');
-    }
 
 }

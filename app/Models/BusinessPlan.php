@@ -56,8 +56,4 @@ class BusinessPlan extends Model
         return $this->belongsTo(Meeting::class);
     }
 
-      public function evaluations()
-    {
-        return $this->hasOne(Evaluation::class);
-    }
 }

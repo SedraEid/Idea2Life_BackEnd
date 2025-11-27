@@ -7,12 +7,12 @@ use App\Models\Evaluation;
 use App\Models\Funding;
 use App\Models\GanttChart;
 use App\Models\Idea;
-use App\Models\ImprovementPlan;
 use App\Models\Notification;
 use App\Models\Roadmap;
 use App\Models\Task;
 use App\Models\Meeting;
 use App\Models\Report;
+use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
@@ -21,11 +21,19 @@ use Carbon\Carbon;
 class GanttChartController extends Controller
 {
 
-public function index(Request $request)
+public function index(Request $request, $ideaId)
 {
     $user = $request->user();
-    $ideaId = $request->query('idea_id');
 
+    $idea = Idea::with(['ganttCharts.tasks', 'committee.committeeMember'])
+        ->where('id', $ideaId)
+        ->first();
+
+    if (!$idea) {
+        return response()->json([
+            'message' => 'الفكرة غير موجودة.'
+        ], 404);
+    }
     if (!$ideaId) {
         return response()->json([
             'message' => 'يجب تحديد الفكرة.'
@@ -60,8 +68,6 @@ public function index(Request $request)
         'data' => $idea->ganttCharts
     ]);
 }
-
-
 
 
 
@@ -104,16 +110,6 @@ public function store(Request $request, $idea_id)//ادخال المراحل م�
         return response()->json(['message' => 'الفكرة غير موجودة أو لا تنتمي إليك.'], 404);
     }
 
-        $hasPendingImprovementPlan = $idea->improvementPlans()
-        ->where('status', 'pending')
-        ->exists();
-
-    if ($hasPendingImprovementPlan) {
-        return response()->json([
-            'message' => 'لا يمكنك إضافة مرحلة جديدة حاليًا. يجب أولاً إعداد ورفع خطة تحسين لإقناع اللجنة بجدّيتك في تطوير الفكرة.'
-        ], 403);
-    }
-
     if (!$idea->businessPlan || $idea->businessPlan->latest_score < 80) {
         return response()->json(['message' => 'لا يمكن إضافة مرحلة قبل أن يكون تقييم خطة العمل أعلى من 80.'], 403);
     }
@@ -136,21 +132,7 @@ public function store(Request $request, $idea_id)//ادخال المراحل م�
         'approval_status' => 'pending',
     ]);
 
-    $this->createPhaseMeeting($idea, $gantt); // التابع الخاص لإنشاء الاجتماع
-    $this->updateRoadmapStage($idea);         // تحديث خارطة الطريق
-
-    // إشعارات اللجنة
-    if ($idea->committee && $idea->committee->committeeMember) {
-        foreach ($idea->committee->committeeMember as $member) {
-            Notification::create([
-                'user_id' => $member->user_id,
-                'title' => "مرحلة جديدة ضمن فكرة '{$idea->title}'",
-                'message' => "تم إضافة مرحلة '{$validated['phase_name']}' بانتظار موافقة اللجنة.",
-                'type' => 'gantt_phase_committee',
-                'is_read' => false,
-            ]);
-        }
-    }
+    $this->updateRoadmapStage($idea);// تحديث خارطة الطريق
 
     return response()->json([
         'message' => 'تم إنشاء المرحلة بنجاح',
@@ -205,53 +187,13 @@ public function update(Request $request, $id)
         if (!$idea || !$idea->ideaowner || $idea->ideaowner->user_id != $user->id) {
             return response()->json(['message' => 'لا يمكنك حذف هذه المرحلة لأنها لا تخصك.'], 403);
         }
+    if ($gantt->approval_status === 'approved') {
+        return response()->json(['message' => 'لا يمكن حذف المرحلة بعد موافقة اللجنة.'], 403);
+    }
 
         $gantt->delete();
         return response()->json(['message' => 'تم حذف المرحلة بنجاح']);
     }
-
-  
-
-// إنشاء اجتماع عند نهاية المرحلة تلقائيًا وإنشاء تقرير فارغ مرتبط به
-private function createPhaseMeeting(Idea $idea, GanttChart $gantt)
-{
-    $committeeId = $idea->committee?->id;
-    if (!$committeeId) {
-        return null; 
-    }
-
-    $meetingDate = Carbon::parse($gantt->end_date)->addDay();
-
-    $meeting = Meeting::create([
-        'idea_id'      => $idea->id,
-        'gantt_chart_id' => $gantt->id,
-        'owner_id'     => $idea->ideaowner?->id,
-        'committee_id' => $committeeId,
-        'meeting_date' => $meetingDate,
-        'notes'        => "اجتماع تقييم نهاية المرحلة: {$gantt->phase_name}. تقييم مدى الالتزام بالمواعيد والتقدم في المهام.",
-        'requested_by' => 'committee', 
-        'type'         => 'phase_evaluation',
-        'meeting_link' => null,
-    ]);
-
-    Report::create([
-        'idea_id'      => $idea->id,
-        'meeting_id'   => $meeting->id,
-        'committee_id' => $committeeId,
-        'report_type'  => 'phase_evaluation',
-        'status'       => 'pending',
-        'description'  => null,
-        'evaluation_score' => null,
-        'strengths'    => null,
-        'weaknesses'   => null,
-        'recommendations' => null,
-        'roadmap_id'   => $idea->roadmap?->id,
-        'improvement_plan_id' => null,
-        'delay_count'  => 0,
-    ]);
-
-    return $meeting;
-}
 
 
 
@@ -261,7 +203,6 @@ private function updateRoadmapStage(Idea $idea)
     $roadmapStages = [
         "تقديم الفكرة",
         "التقييم الأولي",
-        "الاجتماع التوجيهي",
         "التخطيط المنهجي",
         "التقييم المتقدم قبل التمويل",
         "التمويل",
@@ -292,6 +233,54 @@ private function updateRoadmapStage(Idea $idea)
 
 
 
+//عند الانتهاء من المراحل و التساكات ارسال للجنة بانتهاء مخطط الغانت 
+public function submitFullTimeline(Request $request, $idea_id)
+{
+    $user = $request->user();
+    $idea = Idea::with(['ideaowner', 'ganttCharts.tasks', 'committee.committeeMember'])
+                ->find($idea_id);
+
+    if (!$idea) {
+        return response()->json(['message' => 'الفكرة غير موجودة.'], 404);
+    }
+
+    if ($idea->ideaowner->user_id != $user->id) {
+        return response()->json(['message' => 'لا يمكنك إرسال هذا الجدول الزمني لأنه لا يخصك.'], 403);
+    }
+
+      if ($idea->committee_approval_status === 'approved') {
+        return response()->json(['message' => 'اللجنة قد وافقت بالفعل على الجدول الزمني.'], 200);
+    }
+
+    if ($idea->ganttCharts->count() == 0) {
+        return response()->json(['message' => 'لا يمكنك الإرسال بدون مراحل.'], 422);
+    }
+
+    foreach ($idea->ganttCharts as $gantt) {
+        if ($gantt->tasks->count() == 0) {
+            return response()->json([
+                'message' => "المرحلة '{$gantt->phase_name}' لا تحتوي على مهام. يجب ملء كل المراحل قبل الإرسال."
+            ], 422);
+        }
+    }
+
+    if ($idea->committee && $idea->committee->committeeMember) {
+        foreach ($idea->committee->committeeMember as $member) {
+            Notification::create([
+                'user_id' => $member->user_id,
+                'title' => "الجدول الزمني جاهز للتقييم",
+                'message' => "قام صاحب الفكرة '{$idea->title}' بإرسال الجدول الزمني كاملاً للتقييم.",
+                'type' => 'gantt_full_review',
+                'is_read' => false,
+            ]);
+        }
+    }
+    return response()->json([
+        'message' => 'تم إرسال الجدول الزمني كاملاً للتقييم بنجاح.',
+        'data' => $idea->ganttCharts
+    ]);
+}
+
 
 public function approveOrRejectAllPhases(Request $request, $idea_id)//الموافقة على المراحل من قبل اللجنة
 {
@@ -313,15 +302,15 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)//الموا
 
     $idea->ganttCharts()->update(['approval_status' => $validated['approval_status']]);
 
-    $statusMessage = $validated['approval_status'] === 'approved' 
-        ? 'تمت الموافقة على جميع المراحل.' 
-        : 'تم رفض جميع المراحل.';
+     $statusMessage = $validated['approval_status'] === 'approved' 
+        ? 'اللجنة قامت بمراجعة جميع مراحل جدولك الزمني ووافقت عليها بعد التأكد من منطقية التواريخ والمهام.' 
+        : 'اللجنة قامت بمراجعة جميع مراحل جدولك الزمني ورفضتها لوجود ملاحظات أو عدم توافق في التواريخ أو المهام.';
 
     if ($idea->ideaowner) {
         Notification::create([
             'user_id' => $idea->ideaowner->user_id,
             'title' => "تم تحديث حالة الموافقة على مراحل فكرة '{$idea->title}'",
-            'message' => "اللجنة قامت بتحديث حالة جميع المراحل: $statusMessage",
+            'message' => "$statusMessage",
             'type' => 'gantt_all_phases_approval_updated',
             'is_read' => false,
         ]);
@@ -333,6 +322,168 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)//الموا
     ]);
 }
 
+
+
+//تقييم المرحلة من قبل اللجنة 
+public function evaluatePhase(Request $request, $idea_id, $gantt_id)
+{
+    $user = $request->user();
+    $gantt = GanttChart::where('id', $gantt_id)
+        ->where('idea_id', $idea_id)
+        ->with('idea.ideaowner', 'idea.committee.committeeMember')
+        ->first();
+
+    if (!$gantt) {
+        return response()->json(['message' => 'المرحلة أو الفكرة غير موجودة.'], 404);
+    }
+    $committeeMember = $user->committeeMember;
+    if (!$committeeMember || $committeeMember->committee_id != $gantt->idea->committee_id) {
+        return response()->json(['message' => 'ليس لديك صلاحية تقييم هذه المرحلة.'], 403);
+    }
+
+    if (now()->lt($gantt->end_date)) {
+        return response()->json([
+            'message' => "لا يمكن تقييم المرحلة قبل تاريخ الانتهاء ({$gantt->end_date->format('Y-m-d')})."
+        ], 422);
+    }
+
+    $validated = $request->validate([
+        'score' => 'required|integer|min:0|max:100',
+        'comments' => 'nullable|string|max:500',
+    ]);
+    $gantt->evaluation_score = $validated['score'];
+
+    if ($validated['score'] < 80 && ($gantt->failure_count ?? 0) == 0) {
+        $gantt->failure_count = 1;
+
+        Notification::create([
+            'user_id' => $gantt->idea->ideaowner->user_id,
+            'title' => 'تنبيه: تقييم المرحلة منخفض',
+            'message' => "تم تقييم مرحلة '{$gantt->phase_name}' بأداء منخفض. راقب تقدمك وحاول تحسين النتائج قبل اتخاذ أي إجراءات صارمة.",
+            'type' => 'warning',
+            'is_read' => false,
+        ]);
+    $committeeMembers = $gantt->idea->committee->committeeMember; 
+    foreach ($committeeMembers as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title' => 'تنبيه: تقييم مرحلة مشروع',
+            'message' => "تم تقييم مرحلة '{$gantt->phase_name}' لمشروع '{$gantt->idea->title}' بأداء منخفض.",
+            'type' => 'info',
+            'is_read' => false,
+        ]);
+    }
+}
+    $gantt->save();
+    $idea = $gantt->idea;
+    $failedPhasesCount = $idea->ganttCharts()->where('failure_count', 1)->count();
+    if ($failedPhasesCount >= 3) {
+        Notification::create([
+            'user_id' => $idea->ideaowner->user_id,
+            'title' => 'إجراء صارم مطلوب!',
+            'message' => "لقد وصل عدد المراحل ذات الأداء المنخفض إلى 3. يجب دفع مبلغ مالي لمتابعة المشروع أو سيتم إلغاؤه.",
+            'type' => 'critical',
+            'is_read' => false,
+        ]);
+            $committeeMembers = $gantt->idea->committee->committeeMember; 
+    foreach ($committeeMembers as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title' => 'تنبيه: أداء منخفض لمشروع',
+            'message' => "لقد تم تقييم 3 مراحل لمشروع '{$idea->title}' بأداء منخفض.",
+            'type' => 'info',
+            'is_read' => false,
+        ]);
+    }}
+    return response()->json([
+        'message' => 'تم تقييم المرحلة بنجاح.',
+        'gantt' => $gantt
+    ]);
+}
+
+//عرض الغرامة المالية لصاحب الفكرة
+public function payPenaltyForPhase(Request $request, $idea_id)
+{
+    $idea = Idea::with('ideaowner', 'ganttCharts', 'committee.committeeMember')->find($idea_id);
+
+    if (!$idea) {
+        return response()->json(['message' => 'الفكرة غير موجودة.'], 404);
+    }
+
+    $user = $idea->ideaowner->user;
+    $badPhases = $idea->ganttCharts->where('failure_count', 1);
+
+    if ($badPhases->count() < 3) {
+        return response()->json([
+            'message' => 'لا يوجد إجراء مالي مطلوب بعد، عدد المراحل السيئة أقل من 3.'
+        ], 422);
+    }
+
+    $ownerWallet = Wallet::where('user_id', $user->id)->first();
+    $adminUser = User::where('role', 'admin')->first();
+    $adminWallet = Wallet::where('user_id', $adminUser->id)->first();
+
+    if (!$ownerWallet || !$adminWallet) {
+        return response()->json(['message' => 'محفظة صاحب الفكرة أو الادمن غير موجودة.'], 404);
+    }
+
+    $amount = 10000; 
+
+    if ($ownerWallet->balance < $amount) {
+        return response()->json(['message' => 'رصيد صاحب الفكرة غير كافٍ لإجراء التحويل.'], 400);
+    }
+    $ownerWallet->decrement('balance', $amount);
+    $adminWallet->increment('balance', $amount);
+
+    WalletTransaction::create([
+        'wallet_id' => $adminWallet->id,
+        'sender_id' => $user->id,
+        'receiver_id' => $adminUser->id,
+        'transaction_type' => 'transfer', 
+        'amount' => $amount,
+        'status' => 'completed',
+        'percentage' => 0,
+        'beneficiary_role' => 'admin',
+        'payment_method' => 'wallet',
+        'notes' => 'تم دفع المبلغ الجزائي بسبب وصول عدد المراحل السيئة إلى 3.'
+    ]);
+
+    $badPhases->each(function($gantt) {
+        $gantt->failure_count = 0;
+        $gantt->save();
+    });
+
+    Notification::create([
+        'user_id' => $user->id,
+        'title' => 'تم دفع المبلغ الجزائي',
+        'message' => "لقد قمت بدفع المبلغ الجزائي {$amount} ويمكنك متابعة مشروعك.",
+        'type' => 'success',
+        'is_read' => false,
+    ]);
+
+    $committeeMembers = $idea->committee->committeeMember ?? collect();
+    foreach ($committeeMembers as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title' => 'تم دفع المبلغ الجزائي',
+            'message' => "صاحب المشروع دفع المبلغ الجزائي ويمكن متابعة المشروع.",
+            'type' => 'info',
+            'is_read' => false,
+        ]);
+    }
+
+    Notification::create([
+        'user_id' => $adminUser->id,
+        'title' => 'تم دفع المبلغ الجزائي',
+        'message' => "صاحب المشروع دفع المبلغ الجزائي {$amount} للمراحل السيئة.",
+        'type' => 'info',
+        'is_read' => false,
+    ]);
+
+    return response()->json([
+        'message' => "تم دفع المبلغ الجزائي {$amount} بنجاح، وتم إعادة ضبط عداد الفشل لكل المراحل السيئة.",
+    ]);
+}
 
 
 //طلب تمويل من قبل صاحب الفكرة ضمن اي مرحلة   
@@ -351,9 +502,12 @@ public function requestFundingGantt(Request $request, $gantt_id)
     if (!$ideaOwner || $ideaOwner->user_id !== $user->id) {
         return response()->json(['message' => 'ليس لديك صلاحية طلب التمويل لهذه الفكرة.'], 403);
     }
-    $businessPlan = $idea->businessPlan;
-    if (!$businessPlan) {
-        return response()->json(['message' => 'لا يمكن تقديم طلب تمويل قبل إعداد خطة العمل.'], 400);
+   // التحقق من عدد المراحل السيئة
+    $badPhasesCount = $idea->ganttCharts->where('failure_count', 1)->count();
+    if ($badPhasesCount >= 3) {
+        return response()->json([
+            'message' => 'لا يمكنك طلب تمويل لأن هناك 3 مراحل أو أكثر ذات أداء ضعيف. يجب اتخاذ الإجراءات المطلوبة أولاً.'
+        ], 403);
     }
 
     $validated = $request->validate([
@@ -434,9 +588,12 @@ public function requestFundingTask(Request $request, $task_id)
         return response()->json(['message' => 'ليس لديك صلاحية طلب التمويل لهذه الفكرة.'], 403);
     }
 
-    $businessPlan = $idea->businessPlan;
-    if (!$businessPlan) {
-        return response()->json(['message' => 'لا يمكن تقديم طلب تمويل قبل إعداد خطة العمل.'], 400);
+  // التحقق من عدد المراحل السيئة
+    $badPhasesCount = $idea->ganttCharts->where('failure_count', 1)->count();
+    if ($badPhasesCount >= 3) {
+        return response()->json([
+            'message' => 'لا يمكنك طلب تمويل لأن هناك 3 مراحل أو أكثر ذات أداء ضعيف. يجب اتخاذ الإجراءات المطلوبة أولاً.'
+        ], 403);
     }
 
     $validated = $request->validate([
@@ -522,28 +679,6 @@ public function evaluateFunding(Request $request, Funding $funding)
         'stage_description' => 'nullable|string|max:500',
         'progress_percentage' => 'nullable|integer|min:0|max:100',
         'next_step' => 'nullable|string|max:255',
-    ]);
-
-    $evaluation = Evaluation::where('idea_id', $idea->id)
-        ->where('evaluation_type', 'funding')
-        ->first();
-
-    if (!$evaluation) {
-        return response()->json(['message' => 'سجل التقييم غير موجود.'], 404);
-    }
-
-    $evaluation->update([
-        'committee_id' => $committeeMember->committee_id,
-        'business_plan_id' => $idea->businessPlan?->id,
-        'funding_id' => $funding->id,
-        'score' => $validated['score'],
-        'strengths' => $validated['strengths'] ?? 'غير محدد',
-        'weaknesses' => $validated['weaknesses'] ?? 'غير محدد',
-        'financial_analysis' => $validated['financial_analysis'] ?? 'غير محدد',
-        'risks' => $validated['risks'] ?? 'غير محدد',
-        'recommendation' => $validated['recommendation'] ?? 'غير محدد',
-        'comments' => $validated['comments'] ?? 'لا توجد ملاحظات',
-        'status' => $validated['status'],
     ]);
 
     $report = $funding->report;
@@ -661,7 +796,6 @@ public function evaluateFunding(Request $request, Funding $funding)
 
     return response()->json([
         'message' => 'تم تقييم طلب التمويل وتحديث جميع السجلات بنجاح.',
-        'evaluation' => $evaluation,
         'report' => $report,
         'funding' => $funding,
     ]);
