@@ -36,7 +36,7 @@ public function requestFunding(Request $request, Idea $idea)//طلب تمويل 
 
     $existingFunding = Funding::where('idea_id', $idea->id)
         ->where('idea_owner_id', $ideaOwner->id)
-        ->whereIn('status', ['requested', 'under_review'])
+        ->whereIn('status', ['requested', 'under_review', 'approved'])
         ->first();
         
 if ($existingFunding && $existingFunding->status !== 'rejected') {

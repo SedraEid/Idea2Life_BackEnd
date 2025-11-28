@@ -381,7 +381,7 @@ public function evaluatePhase(Request $request, $idea_id, $gantt_id)
         Notification::create([
             'user_id' => $idea->ideaowner->user_id,
             'title' => 'إجراء صارم مطلوب!',
-            'message' => "لقد وصل عدد المراحل ذات الأداء المنخفض إلى 3. يجب دفع مبلغ مالي لمتابعة المشروع أو سيتم إلغاؤه.",
+            'message' => "لقد وصل عدد المراحل ذات الأداء المنخفض إلى 3. يجب دفع مبلغ مالي خلال مدة اقصاها شهر لمتابعة المشروع أو سيتم إلغاؤه.",
             'type' => 'critical',
             'is_read' => false,
         ]);
@@ -401,7 +401,9 @@ public function evaluatePhase(Request $request, $idea_id, $gantt_id)
     ]);
 }
 
-//عرض الغرامة المالية لصاحب الفكرة
+
+
+// الغرامة المالية لصاحب الفكرة
 public function payPenaltyForPhase(Request $request, $idea_id)
 {
     $idea = Idea::with('ideaowner', 'ganttCharts', 'committee.committeeMember')->find($idea_id);
@@ -409,45 +411,75 @@ public function payPenaltyForPhase(Request $request, $idea_id)
     if (!$idea) {
         return response()->json(['message' => 'الفكرة غير موجودة.'], 404);
     }
+    $currentUser = $request->user(); 
+    $ownerUser = $idea->ideaowner->user; 
 
+    if ($currentUser->id !== $ownerUser->id) {
+        return response()->json(['message' => 'ليس لديك صلاحية دفع الغرامة لهذه الفكرة.'], 403);
+    }
     $user = $idea->ideaowner->user;
     $badPhases = $idea->ganttCharts->where('failure_count', 1);
+    $badPhasesCount = $badPhases->count();
 
-    if ($badPhases->count() < 3) {
+    if ($badPhasesCount < 3) {
         return response()->json([
             'message' => 'لا يوجد إجراء مالي مطلوب بعد، عدد المراحل السيئة أقل من 3.'
         ], 422);
     }
+    $lastPenaltyNotification = Notification::where('user_id', $user->id)
+        ->where('type', 'critical')
+        ->latest()
+        ->first();
 
-    $ownerWallet = Wallet::where('user_id', $user->id)->first();
-    $adminUser = User::where('role', 'admin')->first();
-    $adminWallet = Wallet::where('user_id', $adminUser->id)->first();
-
-    if (!$ownerWallet || !$adminWallet) {
-        return response()->json(['message' => 'محفظة صاحب الفكرة أو الادمن غير موجودة.'], 404);
+    // تحقق من انتهاء المهلة
+    if ($lastPenaltyNotification) {
+        $deadline = $lastPenaltyNotification->created_at->addMonth();
+        if (now()->gt($deadline)) {
+            return response()->json([
+                'message' => "انتهت المهلة لدفع الغرامة (شهر) ولم يتم الدفع. تم إيقاف المشروع مؤقتًا ويجب التواصل مع اللجنة لاتخاذ الإجراءات.",
+                'status' => 'suspended'
+            ], 403);
+        }
     }
 
-    $amount = 10000; 
+    $ownerWallet = Wallet::where('user_id', $user->id)->first();
+    $investor = $idea->committee->committeeMember
+        ->where('role_in_committee', 'investor')
+        ->first();
+
+    if (!$investor) {
+        return response()->json([
+            'message' => 'لا يوجد مستثمر متاح ضمن اللجنة لتحويل الغرامة.'
+        ], 404);
+    }
+
+    $memberWallet = Wallet::where('user_id', $investor->user_id)->first();
+
+    if (!$ownerWallet || !$memberWallet) {
+        return response()->json(['message' => 'محفظة صاحب الفكرة أو المستثمر غير موجودة.'], 404);
+    }
+
+    $amount = 10000;
 
     if ($ownerWallet->balance < $amount) {
         return response()->json(['message' => 'رصيد صاحب الفكرة غير كافٍ لإجراء التحويل.'], 400);
     }
+
     $ownerWallet->decrement('balance', $amount);
-    $adminWallet->increment('balance', $amount);
+    $memberWallet->increment('balance', $amount);
 
     WalletTransaction::create([
-        'wallet_id' => $adminWallet->id,
+        'wallet_id' => $memberWallet->id,
         'sender_id' => $user->id,
-        'receiver_id' => $adminUser->id,
-        'transaction_type' => 'transfer', 
+        'receiver_id' => $investor->user_id,
+        'transaction_type' => 'transfer',
         'amount' => $amount,
         'status' => 'completed',
         'percentage' => 0,
-        'beneficiary_role' => 'admin',
+        'beneficiary_role' => 'investor',
         'payment_method' => 'wallet',
         'notes' => 'تم دفع المبلغ الجزائي بسبب وصول عدد المراحل السيئة إلى 3.'
     ]);
-
     $badPhases->each(function($gantt) {
         $gantt->failure_count = 0;
         $gantt->save();
@@ -456,13 +488,12 @@ public function payPenaltyForPhase(Request $request, $idea_id)
     Notification::create([
         'user_id' => $user->id,
         'title' => 'تم دفع المبلغ الجزائي',
-        'message' => "لقد قمت بدفع المبلغ الجزائي {$amount} ويمكنك متابعة مشروعك.",
+        'message' => "لقد قمت بدفع المبلغ الجزائي {$amount} ويمكنك متابعة مشروعك. سيتم استرجاع المبلغ بعد انتهاء المشروع.",
         'type' => 'success',
         'is_read' => false,
     ]);
 
-    $committeeMembers = $idea->committee->committeeMember ?? collect();
-    foreach ($committeeMembers as $member) {
+    foreach ($idea->committee->committeeMember as $member) {
         Notification::create([
             'user_id' => $member->user_id,
             'title' => 'تم دفع المبلغ الجزائي',
@@ -472,18 +503,12 @@ public function payPenaltyForPhase(Request $request, $idea_id)
         ]);
     }
 
-    Notification::create([
-        'user_id' => $adminUser->id,
-        'title' => 'تم دفع المبلغ الجزائي',
-        'message' => "صاحب المشروع دفع المبلغ الجزائي {$amount} للمراحل السيئة.",
-        'type' => 'info',
-        'is_read' => false,
-    ]);
-
     return response()->json([
-        'message' => "تم دفع المبلغ الجزائي {$amount} بنجاح، وتم إعادة ضبط عداد الفشل لكل المراحل السيئة.",
+        'message' => "تم دفع المبلغ الجزائي {$amount} بنجاح، .",
     ]);
 }
+
+
 
 
 //طلب تمويل من قبل صاحب الفكرة ضمن اي مرحلة   
@@ -654,43 +679,36 @@ public function requestFundingTask(Request $request, $task_id)
 }
 
 
-public function evaluateFunding(Request $request, Funding $funding)
+public function approveFunding(Funding $funding, Request $request)
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
 
     if (!$committeeMember || $committeeMember->committee_id != $funding->committee_id) {
-        return response()->json(['message' => 'ليس لديك صلاحية تقييم هذا الطلب.'], 403);
+        return response()->json(['message' => 'ليس لديك صلاحية لإجراء هذا الطلب.'], 403);
     }
 
-    $idea = $funding->idea;
-
-    $validated = $request->validate([
-        'score' => 'required|integer|min:0|max:100',
+    $request->validate([
+        'approved' => 'required|boolean',
+        'score' => 'nullable|integer|min:0|max:100',
         'strengths' => 'nullable|string',
         'weaknesses' => 'nullable|string',
-        'financial_analysis' => 'nullable|string',
-        'risks' => 'nullable|string',
         'recommendation' => 'nullable|string',
         'comments' => 'nullable|string',
-        'status' => 'required|in:approved,rejected,under_review',
-        'approved_amount' => 'nullable|numeric|min:0',
-        'requirements_verified' => 'nullable|boolean',
-        'stage_description' => 'nullable|string|max:500',
-        'progress_percentage' => 'nullable|integer|min:0|max:100',
-        'next_step' => 'nullable|string|max:255',
     ]);
+
+    $idea = $funding->idea;
 
     $report = $funding->report;
     if ($report) {
         $report->update([
             'committee_id' => $committeeMember->committee_id,
             'description' => "تقرير تقييم طلب التمويل رقم {$funding->id}",
-            'evaluation_score' => $validated['score'],
-            'strengths' => $validated['strengths'],
-            'weaknesses' => $validated['weaknesses'],
-            'recommendations' => $validated['recommendation'],
-            'status' => $validated['status'],
+            'evaluation_score' => $request->score ?? 0,
+            'strengths' => $request->strengths,
+            'weaknesses' => $request->weaknesses,
+            'recommendations' => $request->recommendation,
+            'status' => $request->approved ? 'approved' : 'rejected',
         ]);
     } else {
         $report = Report::create([
@@ -700,104 +718,75 @@ public function evaluateFunding(Request $request, Funding $funding)
             'meeting_id' => $funding->meeting_id,
             'description' => "تقرير تقييم طلب التمويل رقم {$funding->id}",
             'report_type' => 'funding_evaluation',
-            'evaluation_score' => $validated['score'],
-            'strengths' => $validated['strengths'],
-            'weaknesses' => $validated['weaknesses'],
-            'recommendations' => $validated['recommendation'],
-            'status' => $validated['status'],
+            'evaluation_score' => $request->score ?? 0,
+            'strengths' => $request->strengths,
+            'weaknesses' => $request->weaknesses,
+            'recommendations' => $request->recommendation,
+            'status' => $request->approved ? 'approved' : 'rejected',
         ]);
 
         $funding->update(['report_id' => $report->id]);
     }
-
-    $funding->update([
-        'status' => $validated['status'],
-        'approved_amount' => $validated['approved_amount'] ?? $funding->requested_amount,
-        'committee_notes' => $validated['comments'] ?? $funding->committee_notes,
-        'requirements_verified' => $validated['requirements_verified'] ?? false,
-    ]);
-
-    $roadmap = null;
-
-    if ($validated['status'] === 'approved') {
-        $investorUser = $funding->investor?->user;
-        $ownerUser = $funding->ideaOwner?->user;
-
-        $investorWallet = Wallet::where('user_id', $investorUser?->id)->first();
-        $ownerWallet = Wallet::where('user_id', $ownerUser?->id)->first();
-
-        if (!$investorWallet || !$ownerWallet) {
-            return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
-        }
-
-        $amount = $validated['approved_amount'] ?? $funding->requested_amount;
-
-        if ($investorWallet->balance < $amount) {
-            return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'], 400);
-        }
-
-        $investorWallet->decrement('balance', $amount);
-        $ownerWallet->increment('balance', $amount);
-
-        WalletTransaction::create([
-            'wallet_id' => $investorWallet->id,
-            'funding_id' => $funding->id,
-            'sender_id' => $investorUser->id,
-            'receiver_id' => $ownerUser->id,
-            'transaction_type' => 'transfer',
-            'amount' => $amount,
-            'percentage' => 0,
-            'beneficiary_role' => 'creator',
-            'status' => 'completed',
-            'payment_method' => 'wallet',
-            'notes' => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
+    if (!$request->approved) {
+        $funding->update(['status' => 'rejected']);
+        return response()->json([
+            'message' => 'تم رفض طلب التمويل.',
+            'funding' => $funding,
+            'report' => $report
         ]);
-
-        $funding->update([
-            'transfer_date' => now(),
-            'transaction_reference' => 'TX-' . uniqid(),
-            'payment_method' => 'wallet',
-            'status' => 'funded',
-        ]);
-
     }
+
+    $investorUser = $funding->investor?->user;
+    $ownerUser = $funding->ideaOwner?->user;
+
+    $investorWallet = Wallet::where('user_id', $investorUser?->id)->first();
+    $ownerWallet = Wallet::where('user_id', $ownerUser?->id)->first();
+
+    if (!$investorWallet || !$ownerWallet) {
+        return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
+    }
+
+    $amount = $funding->requested_amount;
+
+    if ($investorWallet->balance < $amount) {
+        return response()->json(['message' => 'رصيد المستثمر غير كافٍ.'], 400);
+    }
+    $investorWallet->decrement('balance', $amount);
+    $ownerWallet->increment('balance', $amount);
+    WalletTransaction::create([
+        'wallet_id' => $ownerWallet->id,
+        'funding_id' => $funding->id,
+        'sender_id' => $investorUser->id,
+        'receiver_id' => $ownerUser->id,
+        'transaction_type' => 'transfer',
+        'amount' => $amount,
+        'percentage' => 0,
+        'beneficiary_role' => 'creator',
+        'status' => 'completed',
+        'payment_method' => 'wallet',
+        'notes' => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة بعد الموافقة.',
+    ]);
+  $funding->update([
+    'status' => $request->approved ? 'funded' : 'rejected', 
+    'is_approved' => $request->approved,                     
+    'approved_amount' => $request->approved ? $funding->requested_amount : 0,
+    'committee_notes' => $request->comments ?? $funding->committee_notes,
+    'payment_method' => $request->approved ? 'wallet' : null,
+    'transfer_date' => $request->approved ? now() : null,
+    'transaction_reference' => $request->approved ? 'TX-' . uniqid() : null,
+]);
 
     Notification::create([
-        'user_id' => $idea->ideaowner?->user_id,
-        'title' => 'تقرير تمويل جديد',
-        'message' => 'تم إصدار تقرير تقييم التمويل لفكرتك "' . $idea->title . '" والحالة: ' . $validated['status'] . '.',
-        'type' => 'funding_report_owner',
+        'user_id' => $ownerUser->id,
+        'title' => 'تم تحويل التمويل',
+        'message' => "تم تحويل مبلغ التمويل {$amount} إلى محفظتك بعد موافقة اللجنة.",
+        'type' => 'funding_approved',
         'is_read' => false,
     ]);
-
-    $committeeMembers = CommitteeMember::where('committee_id', $idea->committee_id)
-        ->where('user_id', '!=', $user->id)
-        ->get();
-
-    foreach ($committeeMembers as $member) {
-        Notification::create([
-            'user_id' => $member->user_id,
-            'title' => 'تقرير تمويل جديد',
-            'message' => 'تم إصدار تقرير تمويل جديد للفكرة "' . $idea->title . '". الحالة: ' . $validated['status'] . '.',
-            'type' => 'funding_report_committee',
-            'is_read' => false,
-        ]);
-    }
-
-    if ($validated['status'] === 'approved') {
-        Notification::create([
-            'user_id' => $idea->ideaowner?->user_id,
-            'title' => 'تمت الموافقة على التمويل',
-            'message' => 'مبروك! تمت الموافقة على تمويل فكرتك "' . $idea->title . '" وتم تحويل المبلغ إلى محفظتك.',
-            'type' => 'funding_approved',
-            'is_read' => false,
-        ]);
-    }
-
     return response()->json([
-        'message' => 'تم تقييم طلب التمويل وتحديث جميع السجلات بنجاح.',
-        'report' => $report,
+        'message' => 'تم تحويل مبلغ التمويل بنجاح بعد الموافقة، وتم إنشاء تقرير التقييم.',
         'funding' => $funding,
+        'report' => $report,
     ]);
 }
 

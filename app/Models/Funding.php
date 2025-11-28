@@ -17,7 +17,6 @@ class Funding extends Model
         'meeting_id',
         'requested_amount',
         'justification',
-        'requirements_verified',
         'committee_notes',
         'is_approved',
         'approved_amount',

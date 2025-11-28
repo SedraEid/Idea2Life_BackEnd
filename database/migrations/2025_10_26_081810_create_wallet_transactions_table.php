@@ -35,7 +35,8 @@ return new class extends Migration
         'technical',     // عضو اللجنة: الخبير التقني
         'legal',         // عضو اللجنة: المستشار القانوني
         'committee',     // اللجنة كمجموعة
-         'platform'       // المنصة نفسها
+         'platform',
+         'admin'       // المنصة نفسها
        ])->nullable();
 
 

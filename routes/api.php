@@ -6,6 +6,7 @@ use App\Http\Controllers\FundingController;
 use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
 use App\Http\Controllers\LaunchController;
+use App\Http\Controllers\LaunchProjectController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
 use Illuminate\Http\Request;
@@ -153,10 +154,9 @@ Route::middleware('auth:sanctum')->group(function () {//طلب التمويل ل
 });
 
 Route::middleware('auth:sanctum')->group(function () {//تمويل للمرحلة او للتاسك 
-    Route::post('/funding/{funding}/evaluate/gantt/task', [GanttChartController::class, 'evaluateFunding']);
+    Route::post('/funding/{funding}/evaluate/gantt/task', [GanttChartController::class, 'approveFunding']);
 });
 
-Route::middleware('auth:sanctum')->post('/ideas/{ideaId}/approve-launch', [LaunchController::class, 'approveLaunch']);
-//اخر تقرير لاطلاق المشروع 
+//ارسال طلب اطلاق المشروع من قبل صاحب الفكرة 
+Route::middleware('auth:sanctum')->post('/ideas/{idea}/launch', [LaunchProjectController::class, 'markReadyForLaunch']);
 
-Route::get('/launched-projects', [LaunchController::class, 'launchedProjects']);
