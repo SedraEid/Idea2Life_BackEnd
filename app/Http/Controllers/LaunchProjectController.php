@@ -83,6 +83,111 @@ foreach ($committeeMembers as $member) {
 
 
 
+public function committeeDecision(Request $request, LaunchProject $launch)
+{
+    $user = $request->user();
+    if (!$user->committeeMember || $user->committeeMember->committee_id != $launch->idea->committee_id) {
+        return response()->json([
+            'message' => 'ليس لديك صلاحية لاتخاذ قرار حول إطلاق المشروع.'
+        ], 403);
+    }
+    $request->validate([
+        'decision' => 'required|in:approved,rejected',
+        'notes' => 'nullable|string',
+    ]);
+
+    $idea = $launch->idea;
+    $meeting = $idea->meetings()
+        ->where('type', 'launch_request')
+        ->latest()
+        ->first();
+
+    if (!$meeting) {
+        return response()->json([
+            'message' => 'لا يوجد اجتماع خاص بطلب الإطلاق بعد.'
+        ], 422);
+    }
+    if ($meeting->meeting_date > now()) {
+        return response()->json([
+            'message' => 'لا يمكن اتخاذ القرار قبل موعد الاجتماع مع اللجنة.'
+        ], 422);
+    }
+    $launchDate = now()->addHours(24);
+    $launch->status = $request->decision;
+
+    if ($request->decision === 'approved') {
+        $launch->launch_date = $launchDate;
+    }
+    $launch->save();
+    $report = Report::create([
+        'idea_id' => $idea->id,
+        'committee_id' => $idea->committee_id,
+        'meeting_id' => $meeting->id,
+        'report_type' => 'launch',
+        'description' => $request->decision === 'approved'
+            ? "تمت الموافقة على إطلاق المشروع، وموعد الإطلاق خلال 24 ساعة."
+            : "تم رفض طلب إطلاق المشروع.",
+        'status' => $request->decision,
+        'recommendations' => $request->notes,
+        'evaluation_score' => null,
+        'strengths' => null,
+        'weaknesses' => null,
+    ]);
+    $ownerUserId = $idea->ideaowner->user_id;
+    if ($request->decision === 'approved') {
+        Notification::create([
+            'user_id' => $ownerUserId,
+            'title' => 'موافقة على إطلاق مشروعك',
+            'message' =>
+                "تهانينا! تمت الموافقة على إطلاق مشروع '{$idea->title}'. سيتم الإطلاق خلال 24 ساعة بتاريخ: {$launchDate}. 
+                المنصة ستتابعك بعد الإطلاق لضمان استقرار مشروعك.",
+            'type' => 'success',
+            'is_read' => false,
+        ]);
+    } else {
+        Notification::create([
+            'user_id' => $ownerUserId,
+            'title' => 'تم رفض طلب إطلاق مشروعك',
+            'message' =>
+                "نأسف، تم رفض طلب إطلاق مشروع '{$idea->title}'. ملاحظات اللجنة: {$request->notes}",
+            'type' => 'warning',
+            'is_read' => false,
+        ]);
+    }
+    $roadmapStages = [
+        "تقديم الفكرة",
+        "التقييم الأولي",
+        "التخطيط المنهجي",
+        "التقييم المتقدم قبل التمويل",
+        "التمويل",
+        "التنفيذ والتطوير",
+        "الإطلاق",
+        "المتابعة بعد الإطلاق",
+        "استقرار المشروع وانفصاله عن المنصة",
+    ];
+    $currentStage = "الإطلاق";
+    $currentStageIndex = array_search($currentStage, $roadmapStages);
+    $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
+
+    $idea->roadmap_stage = $currentStage;
+    $idea->save();
+
+    $roadmap = $idea->roadmap;
+    if ($roadmap) {
+        $roadmap->update([
+            'current_stage' => $currentStage,
+            'stage_description' => "المرحلة الحالية: {$currentStage}",
+            'progress_percentage' => $progressPercentage,
+            'last_update' => now(),
+            'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
+        ]);
+    }
+    return response()->json([
+        'message' => 'تم تسجيل قرار اللجنة بنجاح.',
+        'launch' => $launch,
+        'report' => $report,
+    ]);
+}
 
 
 }

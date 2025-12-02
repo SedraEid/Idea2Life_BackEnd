@@ -13,16 +13,13 @@ class Report extends Model
         'idea_id',
         'meeting_id',
         'committee_id',
-        'roadmap_id',
         'description',
         'report_type',
         'evaluation_score',
         'strengths',
         'weaknesses',
         'recommendations',
-         'delay_count',
         'status',
-        'improvement_plan_id',
     ];
 
 
@@ -39,11 +36,6 @@ class Report extends Model
     public function committee()
     {
         return $this->belongsTo(Committee::class);
-    }
-
-    public function roadmap()
-    {
-        return $this->belongsTo(Roadmap::class);
     }
 
       public function businessPlans()

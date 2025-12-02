@@ -16,7 +16,6 @@ return new class extends Migration
             $table->foreignId('idea_id')->constrained('ideas')->onDelete('cascade');
             $table->foreignId('meeting_id')->nullable()->constrained('meetings')->onDelete('cascade');
             $table->foreignId('committee_id')->constrained('committees')->onDelete('cascade');
-            $table->foreignId('roadmap_id')->nullable()->constrained('roadmaps')->onDelete('set null');
             $table->text('description')->nullable();
             $table->string('report_type'); 
             $table->decimal('evaluation_score', 5, 2)->nullable();

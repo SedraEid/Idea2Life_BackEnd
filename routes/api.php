@@ -160,3 +160,5 @@ Route::middleware('auth:sanctum')->group(function () {//تمويل للمرحل�
 //ارسال طلب اطلاق المشروع من قبل صاحب الفكرة 
 Route::middleware('auth:sanctum')->post('/ideas/{idea}/launch', [LaunchProjectController::class, 'markReadyForLaunch']);
 
+Route::middleware('auth:sanctum')->post('/launch/{launch}/decision', //قرار اللجنة بالاطلاق
+    [LaunchProjectController::class, 'committeeDecision']);

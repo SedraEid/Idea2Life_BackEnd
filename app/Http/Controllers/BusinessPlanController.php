@@ -119,7 +119,6 @@ public function store(Request $request, Idea $idea)
     } else {
         $report = $idea->reports()->create([
             'committee_id' => $idea->committee_id,
-            'roadmap_id' => $idea->roadmap?->id,
             'description' => 'تقييم خطة العمل بعد الاجتماع.',
             'report_type' => 'advanced',
             'evaluation_score' => null,

@@ -107,7 +107,6 @@ public function evaluate(Request $request, Idea $idea)//تابع تقييم ال
         $reportData = array_merge($reportData, [
             'idea_id' => $idea->id,
             'committee_id' => $idea->committee_id,
-            'roadmap_id' => $idea->roadmap?->id,
             'report_type' => 'initial',
         ]);
         $report = Report::create($reportData);
@@ -329,7 +328,6 @@ public function advancedEvaluation(Request $request, Idea $idea)//تقييم خ�
         ],
         [
             'committee_id' => $idea->committee_id,
-            'roadmap_id' => $roadmap->id,
             'meeting_id' => $meeting->id, 
             'description' => 'تقرير التقييم المتقدم الصادر عن اللجنة بعد مراجعة خطة العمل والاجتماع.',
             'evaluation_score' => $request->score,

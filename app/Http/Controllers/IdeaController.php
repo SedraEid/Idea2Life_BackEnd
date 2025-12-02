@@ -80,29 +80,16 @@ class IdeaController extends Controller
     $progressPercentage = (($initialStageIndex + 1) / count($roadmapStages)) * 100;
     $nextStep = $initialStageIndex + 1 < count($roadmapStages) ? $roadmapStages[$initialStageIndex + 1] : null;
 
-    $existingRoadmap = Roadmap::where('owner_id', $ideaOwner->id)->first();
-    if ($existingRoadmap) {
-        $existingRoadmap->update([
-            'idea_id' => $idea->id,
-            'committee_id' => $committee->id,
-            'current_stage' => $initialStageName,
-            'stage_description' => 'تم تسجيل الفكرة وهي الآن في المرحلة: ' . $initialStageName,
-            'progress_percentage' => $progressPercentage,
-            'last_update' => now(),
-            'next_step' => $nextStep,
-        ]);
-        $roadmap = $existingRoadmap;
-    } else {
-        $roadmap = $idea->roadmap()->create([
-            'committee_id' => $committee->id,
-            'owner_id' => $ideaOwner->id,
-            'current_stage' => $initialStageName,
-            'stage_description' => 'تم تسجيل الفكرة وهي الآن في المرحلة: ' . $initialStageName,
-            'progress_percentage' => $progressPercentage,
-            'last_update' => now(),
-            'next_step' => $nextStep,
-        ]);
-    }
+ $roadmap = Roadmap::create([
+    'idea_id' => $idea->id,
+    'committee_id' => $committee->id,
+    'owner_id' => $ideaOwner->id,
+    'current_stage' => $initialStageName,
+    'stage_description' => 'تم تسجيل الفكرة وهي الآن في المرحلة: ' . $initialStageName,
+    'progress_percentage' => $progressPercentage,
+    'last_update' => now(),
+    'next_step' => $nextStep,
+]);
     return response()->json([
         'message' => 'تم تسجيل الفكرة، إسنادها للجنة، وإنشاء خارطة الطريق بنجاح!',
         'idea' => $idea,
@@ -256,7 +243,7 @@ public function getIdeasWithCommittee()//جلب كل الافكار مع الل�
             ],
             'committee' => [
                 'id' => $idea->committee?->id,
-                'name' => $idea->committee?->name,
+                'name' => $idea->committee?->committee_name,
                 'committeeMember' => $idea->committee?->committeeMember?->map(function ($committeeMember) {
                     return [
                         'id' => $committeeMember->id,
@@ -281,7 +268,6 @@ public function getIdeasWithCommittee()//جلب كل الافكار مع الل�
 public function myIdeas(Request $request) // تابع جلب افكار صاحب الفكرة مع أعضاء اللجنة
 {
     $user = $request->user();
-
     $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
     if (!$ideaOwner) {
         return response()->json([

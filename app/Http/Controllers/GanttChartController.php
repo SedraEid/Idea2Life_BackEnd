@@ -551,7 +551,6 @@ public function requestFundingGantt(Request $request, $gantt_id)
 
     $report = $idea->reports()->create([
         'committee_id' => $idea->committee_id,
-        'roadmap_id' => $idea->roadmap?->id,
         'meeting_id' => $meeting->id,
         'description' => 'تقرير أولي حول طلب التمويل للمرحلة: ' . $gantt->phase_name,
         'report_type' => 'funding',
@@ -637,7 +636,6 @@ public function requestFundingTask(Request $request, $task_id)
 
     $report = $idea->reports()->create([
         'committee_id' => $idea->committee_id,
-        'roadmap_id' => $idea->roadmap?->id,
         'meeting_id' => $meeting->id,
         'description' => 'تقرير أولي حول طلب التمويل للمهمة: ' . $task->task_name,
         'report_type' => 'funding',
@@ -714,7 +712,6 @@ public function approveFunding(Funding $funding, Request $request)
         $report = Report::create([
             'idea_id' => $idea->id,
             'committee_id' => $committeeMember->committee_id,
-            'roadmap_id' => $idea->roadmap?->id,
             'meeting_id' => $funding->meeting_id,
             'description' => "تقرير تقييم طلب التمويل رقم {$funding->id}",
             'report_type' => 'funding_evaluation',
