@@ -144,6 +144,10 @@ Route::middleware('auth:sanctum')->group(function () {//تقييم المرحل�
     Route::post('/ideas/{idea}/phase-evaluation/{gantt_id}', [GanttChartController::class, 'evaluatePhase']);
 });
 
+
+//عرض الغرامة المالية لصاحب الفكرة 
+Route::middleware('auth:sanctum')->get('/ideas/{idea_id}/penalty', [GanttChartController::class, 'showPenaltyStatus']);
+
 //دفع المبلغ المالي من قبل صاحب الفكرة بعد 3 تقييمات سيئة لكي يستطيع اكمال المشروع
 Route::middleware('auth:sanctum')->post('/gantt/{idea_id}/pay-penalty', [GanttChartController::class, 'payPenaltyForPhase']);
 

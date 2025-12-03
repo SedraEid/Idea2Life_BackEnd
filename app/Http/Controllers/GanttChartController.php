@@ -402,6 +402,33 @@ public function evaluatePhase(Request $request, $idea_id, $gantt_id)
 }
 
 
+//عرض انه يجب ان يتم دفع مبلغ جزائي من قبل صاحب افكرة بسبب التقييم السيء للتنفيذ
+public function showPenaltyStatus(Request $request, $idea_id)
+{
+    $idea = Idea::with('ideaowner', 'ganttCharts')->find($idea_id);
+    if (!$idea) {
+        return response()->json(['message' => 'الفكرة غير موجودة.'], 404);
+    }
+    $currentUser = $request->user();
+    $ownerUser = $idea->ideaowner->user;
+    if ($currentUser->id !== $ownerUser->id) {
+        return response()->json(['message' => 'ليس لديك صلاحية الاطلاع على حالة الغرامة لهذه الفكرة.'], 403);
+    }
+    $badPhases = $idea->ganttCharts->where('failure_count', 1);
+    $badPhasesCount = $badPhases->count();
+    $penaltyAmount = 10000; 
+    if ($badPhasesCount < 3) {
+        return response()->json([
+            'message' => "لا يوجد غرامة حالياً، عدد المراحل السيئة: {$badPhasesCount}."
+        ], 200);
+    }
+    return response()->json([
+        'message' => "تم الوصول إلى حد الغرامة: لديك {$badPhasesCount} مراحل سيئة، ويجب دفع مبلغ جزائي قدره {$penaltyAmount} ليتم متابعة المشروع.",
+        'bad_phases' => $badPhases->pluck('phase_name'),
+        'penalty_amount' => $penaltyAmount,
+    ]);
+}
+
 
 // الغرامة المالية لصاحب الفكرة
 public function payPenaltyForPhase(Request $request, $idea_id)
@@ -488,7 +515,7 @@ public function payPenaltyForPhase(Request $request, $idea_id)
     Notification::create([
         'user_id' => $user->id,
         'title' => 'تم دفع المبلغ الجزائي',
-        'message' => "لقد قمت بدفع المبلغ الجزائي {$amount} ويمكنك متابعة مشروعك. سيتم استرجاع المبلغ بعد انتهاء المشروع.",
+        'message' => "لقد قمت بدفع المبلغ الجزائي {$amount} ويمكنك متابعة مشروعك.",
         'type' => 'success',
         'is_read' => false,
     ]);

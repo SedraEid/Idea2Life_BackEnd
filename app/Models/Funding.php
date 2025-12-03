@@ -54,11 +54,6 @@ class Funding extends Model
         return $this->belongsTo(Meeting::class);
     }  
 
-      public function report()
-    {
-        return $this->belongsTo(Report::class);
-    }
-
       public function walletTransactions()
     {
         return $this->hasMany(WalletTransaction::class);
