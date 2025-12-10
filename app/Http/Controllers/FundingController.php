@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class FundingController extends Controller
@@ -307,15 +308,13 @@ public function getUserFundings(Request $request)//عرض طلب التمويل 
 
 
 
-public function evaluateFunding(Request $request, Funding $funding)//الموافقة او رفض التمويل من قبل اللجنة 
+public function evaluateFunding(Request $request, Funding $funding)
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
-
     if (!$committeeMember || $committeeMember->committee_id != $funding->committee_id) {
         return response()->json(['message' => 'ليس لديك صلاحية تقييم هذا الطلب.'], 403);
     }
-
     $meeting = $funding->meeting;
     if (!$meeting || $meeting->meeting_date > now()) {
         return response()->json([
@@ -323,115 +322,118 @@ public function evaluateFunding(Request $request, Funding $funding)//الموا�
             'meeting_date' => $meeting?->meeting_date?->toDateTimeString()
         ], 400);
     }
-
     $validated = $request->validate([
         'is_approved' => 'required|boolean',
         'approved_amount' => 'nullable|numeric|min:0',
         'committee_notes' => 'nullable|string',
     ]);
 
-    $funding->update([
-        'is_approved' => $validated['is_approved'],
-        'approved_amount' => $validated['approved_amount'] ?? $funding->requested_amount,
-        'committee_notes' => $validated['committee_notes'] ?? '',
-        'status' => $validated['is_approved'] ? 'approved' : 'rejected',
-    ]);
+    DB::beginTransaction();
 
-    $idea = $funding->idea;
+    try {        $funding->update([
+            'is_approved'    => $validated['is_approved'],
+            'approved_amount'=> $validated['approved_amount'] ?? $funding->requested_amount,
+            'committee_notes'=> $validated['committee_notes'] ?? '',
+            'status'         => $validated['is_approved'] ? 'approved' : 'rejected',
+        ]);
 
-    if ($validated['is_approved']) {
-        $investorUser = $funding->investor?->user;
-        $ownerUser = $funding->ideaOwner?->user;
+        $idea = $funding->idea;
+        if ($validated['is_approved']) {
 
-        $investorWallet = Wallet::where('user_id', $investorUser?->id)->first();
-        $ownerWallet = Wallet::where('user_id', $ownerUser?->id)->first();
+            $investorUser = $funding->investor?->user;
+            $ownerUser    = $funding->ideaOwner?->user;
 
-        if (!$investorWallet || !$ownerWallet) {
-            return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
+            $investorWallet = Wallet::where('user_id', $investorUser?->id)->first();
+            $ownerWallet    = Wallet::where('user_id', $ownerUser?->id)->first();
+
+            if (!$investorWallet || !$ownerWallet) {
+                DB::rollBack();
+                return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
+            }
+
+            $amount = $funding->approved_amount;
+
+            if ($investorWallet->balance < $amount) {
+                DB::rollBack();
+                return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'], 400);
+            }
+            $investorWallet->decrement('balance', $amount);
+            $ownerWallet->increment('balance', $amount);
+
+            WalletTransaction::create([
+                'wallet_id'        => $ownerWallet->id,
+                'funding_id'       => $funding->id,
+                'sender_id'        => $investorUser->id,
+                'receiver_id'      => $ownerUser->id,
+                'transaction_type' => 'transfer',
+                'amount'           => $amount,
+                'percentage'       => 0,
+                'beneficiary_role' => 'creator',
+                'status'           => 'completed',
+                'payment_method'   => 'wallet',
+                'notes'            => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
+            ]);
+            $funding->update([
+                'transfer_date'         => now(),
+                'transaction_reference'  => 'TX-' . uniqid(),
+                'payment_method'         => 'wallet',
+            ]);
+        }
+        $roadmapStages = [
+            "تقديم الفكرة",
+            "التقييم الأولي",
+            "التخطيط المنهجي",
+            "التقييم المتقدم قبل التمويل",
+            "التمويل",
+            "التنفيذ والتطوير",
+            "الإطلاق",
+            "المتابعة بعد الإطلاق",
+            "استقرار المشروع وانفصاله عن المنصة",
+        ];
+        $currentStageIndex = array_search("التمويل", $roadmapStages);
+        if ($validated['is_approved']) {
+            $stageDescription = "تمت الموافقة على التمويل والمبلغ المحدد: " . $funding->approved_amount;
+            $nextStep = $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة';
+            $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
+        } else {
+            $stageDescription = "تم رفض طلب التمويل؛ يمكن إعادة تقديم الطلب بعد تعديل الخطة.";
+            $nextStep = "إعادة تقديم طلب التمويل";
+            $progressPercentage = (($currentStageIndex + 0.2) / count($roadmapStages)) * 100;
         }
 
-        $amount = $funding->approved_amount;
-
-        if ($investorWallet->balance < $amount) {
-            return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'], 400);
+        $roadmap = $idea->roadmap;
+        if ($roadmap) {
+            $roadmap->update([
+                'current_stage'        => "التمويل",
+                'stage_description'    => $stageDescription,
+                'progress_percentage'  => $progressPercentage,
+                'last_update'          => now(),
+                'next_step'            => $nextStep,
+            ]);
         }
-
-        $investorWallet->decrement('balance', $amount);
-        $ownerWallet->increment('balance', $amount);
-
-        WalletTransaction::create([
-            'wallet_id' => $investorWallet->id,
-            'funding_id' => $funding->id,
-            'sender_id' => $investorUser->id,
-            'receiver_id' => $ownerUser->id,
-            'transaction_type' => 'transfer',
-            'amount' => $amount,
-            'percentage' => 0,
-            'beneficiary_role' => 'creator',
-            'status' => 'completed',
-            'payment_method' => 'wallet',
-            'notes' => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
+        $idea->update(['roadmap_stage' => "التمويل"]);
+        Notification::create([
+            'user_id' => $idea->ideaowner?->user_id,
+            'title'   => 'تقييم طلب التمويل',
+            'message' => 'تم تقييم طلب التمويل لفكرتك "' . $idea->title . '". الحالة: ' . ($validated['is_approved'] ? 'مقبول' : 'مرفوض') . '.',
+            'type'    => 'funding_evaluation',
+            'is_read' => false,
+        ]);
+        DB::commit();
+        return response()->json([
+            'message'  => 'تم تقييم طلب التمويل وتحديث الحالة والخارطة وتحويل المبلغ تلقائيًا إذا تمت الموافقة.',
+            'funding'  => $funding,
+            'roadmap'  => $roadmap,
         ]);
 
-        $funding->update([
-            'transfer_date' => now(),
-            'transaction_reference' => 'TX-' . uniqid(),
-            'payment_method' => 'wallet',
-        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'حدث خطأ أثناء تقييم التمويل.',
+            'error'   => $e->getMessage(),
+        ], 500);
     }
-
-    $roadmapStages = [
-        "تقديم الفكرة",
-        "التقييم الأولي",
-        "التخطيط المنهجي",
-        "التقييم المتقدم قبل التمويل",
-        "التمويل",
-        "التنفيذ والتطوير",
-        "الإطلاق",
-        "المتابعة بعد الإطلاق",
-        "استقرار المشروع وانفصاله عن المنصة",
-    ];
-
-    $currentStageIndex = array_search("التمويل", $roadmapStages);
-
-    if ($validated['is_approved']) {
-        $stageDescription = "تمت الموافقة على التمويل والمبلغ المحدد: " . $funding->approved_amount;
-        $nextStep = $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة';
-        $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
-    } else {
-        $stageDescription = "تم رفض طلب التمويل؛ يمكن إعادة تقديم الطلب بعد تعديل الخطة.";
-        $nextStep = "إعادة تقديم طلب التمويل";
-        $progressPercentage = (($currentStageIndex + 0.2) / count($roadmapStages)) * 100;
-    }
-
-    $roadmap = $idea->roadmap;
-    if ($roadmap) {
-        $roadmap->update([
-            'current_stage' => "التمويل",
-            'stage_description' => $stageDescription,
-            'progress_percentage' => $progressPercentage,
-            'last_update' => now(),
-            'next_step' => $nextStep,
-        ]);
-    }
-
-    $idea->update(['roadmap_stage' => "التمويل"]);
-
-    Notification::create([
-        'user_id' => $idea->ideaowner?->user_id,
-        'title' => 'تقييم طلب التمويل',
-        'message' => 'تم تقييم طلب التمويل لفكرتك "' . $idea->title . '". الحالة: ' . ($validated['is_approved'] ? 'مقبول' : 'مرفوض') . '.',
-        'type' => 'funding_evaluation',
-        'is_read' => false,
-    ]);
-
-    return response()->json([
-        'message' => 'تم تقييم طلب التمويل وتحديث الحالة والخارطة وتحويل المبلغ تلقائيًا إذا تمت الموافقة.',
-        'funding' => $funding,
-        'roadmap' => $roadmap,
-    ]);
 }
-
 
 public function showFundingForIdea(Request $request, $idea_id)//عرض طلبات التمويل التي كتبها صاحب الفكرة لصاحب الفكرة
 {

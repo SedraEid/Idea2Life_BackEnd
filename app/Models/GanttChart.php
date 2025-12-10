@@ -19,12 +19,11 @@ class GanttChart extends Model
         'progress',          
         'approval_status',  
         'evaluation_score',   
-        'failure_count',      
-        'attachments',       
+        'failure_count',
+        'evaluation_comments'      
     ];
 
         protected $casts = [
-        'attachments' => 'array', 
         'start_date' => 'date',
         'end_date' => 'date',
     ];
