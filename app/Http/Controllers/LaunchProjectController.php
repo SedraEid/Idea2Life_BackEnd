@@ -7,6 +7,7 @@ use App\Models\LaunchProject;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
+use App\Models\Roadmap;
 use App\Models\Task;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -51,7 +52,7 @@ public function markReadyForLaunch(Request $request, Idea $idea)
         'idea_id' => $idea->id,
         'status' => 'pending',
         'launch_date' => null,
-    ]);
+        ]);
     $meeting = $idea->meetings()->create([
  'owner_id' => $idea->ideaowner->id,
          'committee_id' => $idea->committee_id,
@@ -115,9 +116,10 @@ public function committeeDecision(Request $request, LaunchProject $launch)
     $launchDate = now()->addHours(24);
     $launch->status = $request->decision;
 
-    if ($request->decision === 'approved') {
-        $launch->launch_date = $launchDate;
-    }
+   if ($request->decision === 'approved') {
+    $launch->launch_date = $launchDate;
+    $launch->status = 'launched'; 
+}
     $launch->save();
     $report = Report::create([
         'idea_id' => $idea->id,
@@ -182,6 +184,19 @@ public function committeeDecision(Request $request, LaunchProject $launch)
             'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
         ]);
     }
+    $launch->followUps()->create([
+        'challenge_detected' => false,
+        'challenge_description' => null,
+        'action_taken' => null,
+        'recorded_by' => $user->id,
+        'kpi_active_users' => 0,
+        'kpi_sales' => 0,
+        'kpi_user_growth' => 0,
+        'kpi_engagement' => 0,
+        'ready_to_separate' => false,
+        'separation_date' => null,
+        'profit_distribution_notes' => null,
+    ]);
     return response()->json([
         'message' => 'تم تسجيل قرار اللجنة بنجاح.',
         'launch' => $launch,

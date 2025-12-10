@@ -86,7 +86,15 @@ public function update(Request $request, $task_id)
     if (!$idea || !$idea->ideaowner || $idea->ideaowner->user_id != $user->id) {
         return response()->json(['message' => 'لا يمكنك تعديل هذه المهمة لأنها لا تخصك.'], 403);
     }
+    $ganttApproved = $idea->ganttCharts()
+        ->where('approval_status', 'approved')
+        ->exists();
 
+    if (!$ganttApproved) {
+        return response()->json([
+            'message' => 'لا يمكن تقييم هذه المرحلة قبل أن تتم الموافقة على المرحلة في الـ Gantt Chart.'
+        ], 422);
+    }
     // التحقق من عدد المراحل السيئة
     $badPhasesCount = $idea->ganttCharts()->where('failure_count', 1)->count();
     if ($badPhasesCount >= 3) {
@@ -94,7 +102,6 @@ public function update(Request $request, $task_id)
             'message' => 'لا يمكنك تعديل المهام حالياً لأن هناك 3 مراحل سيئة. يجب دفع المبلغ الجزائي أو المشروع قد يُلغى.'
         ], 403);
     }
-
     $validated = $request->validate([
         'progress_percentage' => 'sometimes|numeric|min:0|max:100',
         'attachments' => 'sometimes|array',
@@ -118,16 +125,12 @@ public function update(Request $request, $task_id)
     }
 
     $task->update($validated);
-
+    $this->updateGanttProgress($gantt);      
     return response()->json([
         'message' => 'تم تحديث المهمة بنجاح',
         'data' => $task
     ]);
 }
-
-
-
-
 
 private function updateGanttProgress(GanttChart $gantt)//تعديل نسية الانجاز في كل مرحة حسب التاسكات المرتبطة بالمرحلة 
 {

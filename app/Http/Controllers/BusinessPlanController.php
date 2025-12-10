@@ -88,24 +88,27 @@ public function store(Request $request, Idea $idea)
     }
 
     $meeting = $idea->meetings()->where('type', 'business_plan_review')->first();
+$notes = "تم تحديد موعد الاجتماع لمراجعة وتقييم خطة العمل. 
+يرجى من صاحب الفكرة ولجنة التقييم الحضور لمناقشة التفاصيل وإصدار تقرير التقييم.";
 
-    if ($meeting) {
-        $meeting->update([
-            'meeting_date' => now()->addDays(2),
-            'requested_by' => 'committee',
-        ]);
-    } else {
-        $meeting = $idea->meetings()->create([
-            'owner_id' => $ideaOwner->id,
-            'committee_id' => $idea->committee_id,
-            'report_id' => null,
-            'meeting_date' => now()->addDays(3),
-            'type' => 'business_plan_review',
-            'requested_by' => 'committee',
-            'meeting_link' => null,
-            'notes' => null,
-        ]);
-    }
+if ($meeting) {
+    $meeting->update([
+        'meeting_date' => now()->addDays(2),
+        'requested_by' => 'committee',
+        'notes' => $notes
+    ]);
+} else {
+    $meeting = $idea->meetings()->create([
+        'owner_id' => $ideaOwner->id,
+        'committee_id' => $idea->committee_id,
+        'report_id' => null,
+        'meeting_date' => now()->addDays(3),
+        'type' => 'business_plan_review',
+        'requested_by' => 'committee',
+        'meeting_link' => null,
+        'notes' => $notes
+    ]);
+}
 
     $report = $idea->reports()->where('report_type', 'advanced')->first();
 

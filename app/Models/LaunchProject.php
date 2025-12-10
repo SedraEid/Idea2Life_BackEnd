@@ -12,9 +12,15 @@ class LaunchProject extends Model
         'idea_id',
         'status',
         'launch_date',
+        'followup_status'
     ];
     public function idea()
     {
         return $this->belongsTo(Idea::class);
     }
+public function followUps()
+{
+    return $this->hasMany(PostLaunchFollowUp::class, 'launch_project_id');
+}
+
 }

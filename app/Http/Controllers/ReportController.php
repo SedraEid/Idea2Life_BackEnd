@@ -76,51 +76,53 @@ class ReportController extends Controller
 
 
 
-public function evaluate(Request $request, Idea $idea)//تابع تقييم الفكرة الاولية 
+public function evaluate(Request $request, Idea $idea)
 {
     $user = $request->user();
-    if (!$user->committeeMember || !$idea->committee_id || $user->committeeMember->committee_id != $idea->committee_id) {
+    if (!$user->committeeMember || $user->committeeMember->committee_id != $idea->committee_id) {
         return response()->json(['message' => 'ليس لديك صلاحية تقييم هذه الفكرة.'], 403);
     }
+$meeting = $idea->meetings()
+    ->where('type', 'initial')
+    ->where('meeting_date', '<=', now()) 
+    ->first();
 
-    $request->validate([
+if (!$meeting) {
+    return response()->json([
+        'message' => 'لا يمكن تقييم الفكرة قبل انعقاد الاجتماع الأولي من قبل اللجنة.'
+    ], 422);
+}
+
+    $validated = $request->validate([
         'evaluation_score' => 'required|integer|min:0|max:100',
-        'description' => 'nullable|string',
-        'strengths' => 'nullable|string',
-        'weaknesses' => 'nullable|string',
-        'recommendations' => 'nullable|string',
+        'description'      => 'nullable|string',
+        'strengths'        => 'nullable|string',
+        'weaknesses'       => 'nullable|string',
+        'recommendations'  => 'nullable|string',
     ]);
-
-    $report = $idea->reports()->where('report_type', 'initial')->first();
-    $reportData = [
-        'description' => $request->description,
-        'evaluation_score' => $request->evaluation_score,
-        'strengths' => $request->strengths,
-        'weaknesses' => $request->weaknesses,
-        'recommendations' => $request->recommendations,
-        'status' => 'completed',
-    ];
-
-    if ($report) {
-        $report->update($reportData);
-    } else {
-        $reportData = array_merge($reportData, [
-            'idea_id' => $idea->id,
-            'committee_id' => $idea->committee_id,
+    $report = Report::updateOrCreate(
+        [
+            'idea_id'     => $idea->id,
             'report_type' => 'initial',
-        ]);
-        $report = Report::create($reportData);
-    }
-
-    if ($request->evaluation_score >= 80) {
+        ],
+        [
+            'committee_id'      => $idea->committee_id,
+            'description'       => $validated['description'] ?? 'تقرير التقييم الأولي للفكرة.',
+            'evaluation_score'  => $validated['evaluation_score'],
+            'strengths'         => $validated['strengths'],
+            'weaknesses'        => $validated['weaknesses'],
+            'recommendations'  => $validated['recommendations'] ?? null,
+              'status'            => 'completed',
+        ]
+    );
+    if ($validated['evaluation_score'] >= 80) {
         $idea->status = 'approved';
-    } elseif ($request->evaluation_score >= 50) {
+    } elseif ($validated['evaluation_score'] >= 50) {
         $idea->status = 'needs_revision';
     } else {
         $idea->status = 'rejected';
     }
-    $idea->initial_evaluation_score = $request->evaluation_score;
-
+    $idea->initial_evaluation_score = $validated['evaluation_score'];
     $roadmapStages = [
         "تقديم الفكرة",
         "التقييم الأولي",
@@ -133,83 +135,56 @@ public function evaluate(Request $request, Idea $idea)//تابع تقييم ال
         "استقرار المشروع وانفصاله عن المنصة",
     ];
 
-    $currentStageName = 'التقييم الأولي';
-    if ($request->evaluation_score < 50) {
-        $currentStageName = 'التقييم الأولي'; 
-    }
-
-    $idea->roadmap_stage = $currentStageName;
-    $idea->save();
-    $currentStageIndex = array_search($currentStageName, $roadmapStages);
+    $currentStage = 'التقييم الأولي';
+    $currentStageIndex = array_search($currentStage, $roadmapStages);
     $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
-    $nextStep = $this->getNextStep($idea->status);
 
+    $idea->roadmap_stage = $currentStage;
+    $idea->save();
     $roadmap = $idea->roadmap;
     if ($roadmap) {
         $roadmap->update([
-            'current_stage' => $currentStageName,
-            'stage_description' => "تم تنفيذ التقييم الأولي للفكرة من قبل اللجنة",
+            'current_stage'       => $currentStage,
+            'stage_description'   => "تم تنفيذ التقييم الأولي للفكرة من قبل اللجنة",
             'progress_percentage' => $progressPercentage,
-            'last_update' => now(),
-            'next_step' => $nextStep,
-        ]);
-    }
-    $meeting = $idea->meetings()->where('type', 'initial')->first();
-    if (!$meeting) {
-        $meeting = Meeting::create([
-            'idea_id' => $idea->id,
-            'owner_id' => $idea->owner_id,
-            'committee_id' => $idea->committee_id,
-            'meeting_date' => now()->addDays(2),
-            'type' => 'initial',
-            'requested_by' => 'committee',
-            'meeting_link' => null,
-            'notes' => null,
+            'last_update'         => now(),
+            'next_step'           => $this->getNextStep($idea->status),
         ]);
     }
     $report->update(['meeting_id' => $meeting->id]);
-
-$ideaOwner = $idea->ideaowner;
-if ($ideaOwner) {
-    Notification::create([
-        'user_id'    => $ideaOwner->user_id, 
-        'title'      => 'تقرير التقييم الأولي متاح للمراجعة',
-        'message'    => "تم إصدار تقرير التقييم الأولي لفكرتك '{$idea->title}'. يرجى الاطلاع على ملاحظات اللجنة ونتيجة التقييم.",
-        'type'       => 'initial_report_owner',
-        'is_read'    => false,
-    ]);
-}
-
-if ($idea->committee && $idea->committee->committeeMember) {
-    $committeeMembers = $idea->committee->committeeMember()->get();
-
-    foreach ($committeeMembers as $member) {
-        if ($member->user_id == $user->id) continue;
-
+    $ideaOwner = $idea->ideaowner;
+    if ($ideaOwner) {
         Notification::create([
-            'user_id'    => $member->user_id,    
-            'title'      => "تم إنشاء تقرير تقييم أولي لفكرة '{$idea->title}'",
-            'message'    => "أصدر أحد أعضاء اللجنة تقرير التقييم الأولي للفكرة '{$idea->title}'. يمكنك الاطلاع عليه في لوحة التقارير.",
-            'type'       => 'initial_report_committee',
-            'is_read'    => false,
+            'user_id' => $ideaOwner->user_id,
+            'title'   => 'تقرير التقييم الأولي متاح للمراجعة',
+            'message' => "تم إصدار تقرير التقييم الأولي لفكرتك '{$idea->title}'. يرجى الاطلاع على ملاحظات اللجنة ونتيجة التقييم.",
+            'type'    => 'initial_report_owner',
+            'is_read' => false,
         ]);
     }
-}
+    $committeeMembers = $idea->committee->committeeMember()->where('user_id', '!=', $user->id)->get();
+    foreach ($committeeMembers as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title'   => "تم إنشاء تقرير تقييم أولي لفكرة '{$idea->title}'",
+            'message' => "أصدر أحد أعضاء اللجنة تقرير التقييم الأولي للفكرة '{$idea->title}'. يمكنك الاطلاع عليه في لوحة التقارير.",
+            'type'    => 'initial_report_committee',
+            'is_read' => false,
+        ]);
+    }
     return response()->json([
         'message' => 'تم تقييم الفكرة وتحديث التقرير والاجتماع والتقييم بنجاح.',
-        'idea' => $idea,
-        'report' => $report,
-        'meeting' => $meeting,
+        'idea'    => $idea,
+        'report'  => $report,
     ]);
 }
-
 private function getNextStep($status)
 {
     return match($status) {
-        'approved' => 'انتقل لمرحلة إعداد خطة العمل',
+        'approved'       => 'انتقل لمرحلة إعداد خطة العمل',
         'needs_revision' => 'تحسين الفكرة وإعادة التقييم',
-        'rejected' => 'الفكرة مرفوضة',
-        default => 'بانتظار التقييم',
+        'rejected'       => 'الفكرة مرفوضة',
+        default          => 'بانتظار التقييم',
     };
 }
 

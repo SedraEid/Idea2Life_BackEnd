@@ -67,6 +67,10 @@ return $this->hasOne(IdeaOwner::class);
         return $this->hasMany(Notification::class);
     }
     
+        public function followUps()
+    {
+        return $this->hasMany(PostLaunchFollowUp::class, 'recorded_by');
+    }
 
 
 }

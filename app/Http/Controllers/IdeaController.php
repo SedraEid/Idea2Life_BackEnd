@@ -90,11 +90,24 @@ class IdeaController extends Controller
     'last_update' => now(),
     'next_step' => $nextStep,
 ]);
+$initialMeetingDate = now()->addDays(2);
+$meeting = Meeting::create([
+    'idea_id' => $idea->id,
+    'owner_id' => $ideaOwner->id,
+    'committee_id' => $committee->id,
+    'meeting_date' => $initialMeetingDate,
+    'type' => 'initial',
+    'requested_by' => 'committee',
+    'meeting_link' => null,
+    'notes' => 'الاجتماع الأولي لتقييم الفكرة بعد التسجيل',
+]);
     return response()->json([
         'message' => 'تم تسجيل الفكرة، إسنادها للجنة، وإنشاء خارطة الطريق بنجاح!',
         'idea' => $idea,
         'committee' => $committee,
-        'roadmap' => $roadmap
+        'roadmap' => $roadmap,
+         'meeting' => $meeting
+
     ], 201);
 }
 

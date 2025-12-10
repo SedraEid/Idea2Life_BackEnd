@@ -134,15 +134,15 @@ Route::middleware('auth:sanctum')->post('/ideas/{idea_id}/submit-timeline', [Gan
 //رفض او قبول الغانت تشارت من قبل اللجنة المشرفة 
 Route::middleware('auth:sanctum')->post('/ideas/{idea}/gantt/approve-or-reject', [GanttChartController::class, 'approveOrRejectAllPhases']);
 
+Route::middleware('auth:sanctum')->group(function () {//تقييم المرحلة من قبل اللجنة
+    Route::post('/ideas/{idea}/phase-evaluation/{gantt_id}', [GanttChartController::class, 'evaluatePhase']);
+});
+
 Route::middleware('auth:sanctum')->group(function () {
 Route::get('/notifications/owner', [NotificationController::class, 'ownerNotifications']);});//عرض الاشعارات للكل
 
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);//لتحديث حالة القراءة
 
-
-Route::middleware('auth:sanctum')->group(function () {//تقييم المرحلة من قبل اللجنة
-    Route::post('/ideas/{idea}/phase-evaluation/{gantt_id}', [GanttChartController::class, 'evaluatePhase']);
-});
 
 // جلب تقييم مرحلة معيّنة لصاحب الفكرة
 Route::middleware('auth:sanctum')->get('/ideas/{idea_id}/gantt/{gantt_id}/evaluation', 
