@@ -12,7 +12,7 @@ return new class extends Migration
     $table->unsignedBigInteger('idea_id');
         $table->enum('status', ['pending', 'approved', 'rejected', 'launched'])->default('pending');
     $table->dateTime('launch_date')->nullable();
-    $table->enum('followup_status', ['ongoing', 'challenge_detected', 'stabilized'])->default('ongoing');
+    $table->enum('followup_status', ['ongoing', 'challenge_detected', 'stabilized','pending'])->default('ongoing');
     $table->timestamps();
     $table->foreign('idea_id')->references('id')->on('ideas')->onDelete('cascade');
 });

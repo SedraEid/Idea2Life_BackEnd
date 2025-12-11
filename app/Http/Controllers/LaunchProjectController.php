@@ -51,6 +51,7 @@ public function markReadyForLaunch(Request $request, Idea $idea)
     $launch = LaunchProject::create([
         'idea_id' => $idea->id,
         'status' => 'pending',
+        'followup_status' => 'pending',
         'launch_date' => null,
         ]);
     $meeting = $idea->meetings()->create([
@@ -119,6 +120,7 @@ public function committeeDecision(Request $request, LaunchProject $launch)
    if ($request->decision === 'approved') {
     $launch->launch_date = $launchDate;
     $launch->status = 'launched'; 
+      $launch->followup_status = 'ongoing';
 }
     $launch->save();
     $report = Report::create([
@@ -184,6 +186,7 @@ public function committeeDecision(Request $request, LaunchProject $launch)
             'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
         ]);
     }
+ if ($request->decision === 'approved') {
     $launch->followUps()->create([
         'challenge_detected' => false,
         'challenge_description' => null,
@@ -197,6 +200,7 @@ public function committeeDecision(Request $request, LaunchProject $launch)
         'separation_date' => null,
         'profit_distribution_notes' => null,
     ]);
+}
     return response()->json([
         'message' => 'تم تسجيل قرار اللجنة بنجاح.',
         'launch' => $launch,
