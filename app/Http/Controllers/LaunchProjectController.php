@@ -186,21 +186,29 @@ public function committeeDecision(Request $request, LaunchProject $launch)
             'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
         ]);
     }
- if ($request->decision === 'approved') {
-    $launch->followUps()->create([
-        'challenge_detected' => false,
-        'challenge_description' => null,
-        'action_taken' => null,
-        'recorded_by' => $user->id,
-        'kpi_active_users' => 0,
-        'kpi_sales' => 0,
-        'kpi_user_growth' => 0,
-        'kpi_engagement' => 0,
-        'ready_to_separate' => false,
-        'separation_date' => null,
-        'profit_distribution_notes' => null,
-    ]);
+if ($request->decision === 'approved') {
+    $existingFollowup = $launch->followUps()->first();
+    if (!$existingFollowup) {
+        $launch->followUps()->create([
+            'challenge_detected' => false,
+            'challenge_level' => null,           
+            'challenge_description' => null,
+            'action_taken' => null,
+            'recorded_by' => $user->id,
+            'kpi_active_users' => 0,
+            'kpi_sales' => 0,
+            'kpi_user_growth' => 0,
+            'kpi_engagement' => 0,
+            'overall_status' => 'stable',        
+            'ready_to_separate' => false,
+            'recommended_separation_date' => null,
+            'actual_separation_date' => null,
+            'review_status' => 'in_review', 
+            'decision_notes' => null,
+        ]);
+    }
 }
+
     return response()->json([
         'message' => 'تم تسجيل قرار اللجنة بنجاح.',
         'launch' => $launch,

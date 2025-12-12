@@ -135,6 +135,18 @@ public function store(Request $request, $idea_id)//ادخال المراحل م�
 
     $this->updateRoadmapStage($idea);// تحديث خارطة الطريق
 
+       $committeeMembers = $idea->committee?->committeeMember ?? collect();
+    foreach ($committeeMembers as $member) {
+        if ($member->user) {
+            Notification::create([
+                'user_id' => $member->user->id,
+                'title' => 'تمت إضافة مرحلة جديدة على Gantt Chart',
+                'message' => "قام صاحب الفكرة '{$idea->title}' بإضافة مرحلة جديدة: '{$validated['phase_name']}'. يرجى مراجعتها واعتمادها.",
+                'type' => 'info',
+                'is_read' => false,
+            ]);
+        }
+    }
     return response()->json([
         'message' => 'تم إنشاء المرحلة بنجاح',
         'data' => $gantt

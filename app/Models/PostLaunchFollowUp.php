@@ -9,9 +9,12 @@ class PostLaunchFollowUp extends Model
 {
     protected $table = 'post_launch_followups';
     use HasFactory;
-  protected $fillable = [
+
+    protected $fillable = [
         'launch_project_id',
+        'recorded_by',
         'challenge_detected',
+        'challenge_level',
         'challenge_description',
         'action_taken',
         'kpi_active_users',
@@ -22,15 +25,8 @@ class PostLaunchFollowUp extends Model
         'ready_to_separate',
         'recommended_separation_date',
         'actual_separation_date',
-        'committee_decision',
+        'review_status',
         'decision_notes',
-        'recorded_by',
-    ];
-    protected $casts = [
-        'challenge_detected' => 'boolean',
-        'ready_to_separate' => 'boolean',
-        'recommended_separation_date' => 'date',
-        'actual_separation_date' => 'date',
     ];
 
 
