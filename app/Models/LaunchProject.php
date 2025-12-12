@@ -23,4 +23,5 @@ public function followUps()
     return $this->hasMany(PostLaunchFollowUp::class, 'launch_project_id');
 }
 
+
 }

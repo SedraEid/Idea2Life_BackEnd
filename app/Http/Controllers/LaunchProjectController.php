@@ -83,9 +83,35 @@ foreach ($committeeMembers as $member) {
     ], 200);
 }
 
+public function committeeLaunchRequests(Request $request)//عرض طلبات الاطلاق للجنة 
+{
+    $user = $request->user();
+    if (!$user->committeeMember) {
+        return response()->json([
+            'message' => 'يجب أن تكون عضو لجنة لعرض طلبات الإطلاق.'
+        ], 403);
+    }
+    $committeeId = $user->committeeMember->committee_id;
+    $launchRequests = LaunchProject::with([
+        'idea:id,title,committee_id'
+    ])
+    ->whereHas('idea', function ($query) use ($committeeId) {
+        $query->where('committee_id', $committeeId);
+    })
+    ->orderBy('created_at', 'desc')
+    ->get();
+
+    return response()->json([
+        'message' => 'طلبات جاهزية الإطلاق الخاصة بلجنتك.',
+        'data' => $launchRequests
+    ], 200);
+}
 
 
-public function committeeDecision(Request $request, LaunchProject $launch)
+
+
+
+public function committeeDecision(Request $request, LaunchProject $launch)//قرار اللجنة بشان الاطلاق
 {
     $user = $request->user();
     if (!$user->committeeMember || $user->committeeMember->committee_id != $launch->idea->committee_id) {
@@ -215,6 +241,47 @@ if ($request->decision === 'approved') {
         'report' => $report,
     ]);
 }
+
+//عرض نتيجة طلب الاطلاق لصاحب الفكرة 
+public function launchResult(Request $request, Idea $idea)
+{
+    $user = $request->user();
+    if ($idea->ideaowner->user_id !== $user->id) {
+        return response()->json([
+            'message' => 'ليس لديك صلاحية لعرض نتيجة طلب الإطلاق لهذا المشروع.'
+        ], 403);
+    }
+    $launch = LaunchProject::with(['followUps', 'idea'])
+        ->where('idea_id', $idea->id)
+        ->first();
+
+    if (!$launch) {
+        return response()->json([
+            'message' => 'لا يوجد طلب إطلاق تم تقديمه لهذه الفكرة بعد.'
+        ], 404);
+    }
+    $report = $launch->idea->reports()
+        ->where('report_type', 'launch')
+        ->latest()
+        ->first();
+
+    return response()->json([
+        'message' => 'نتيجة طلب إطلاق المشروع.',
+        'data' => [
+            'launch_status' => $launch->status,
+            'launch_date' => $launch->launch_date,
+            'followup_status' => $launch->followup_status,
+            'committee_report' => $report ? [
+                'description' => $report->description,
+                'recommendations' => $report->recommendations,
+                'status' => $report->status
+            ] : null,
+            'post_launch_followups' => $launch->followUps 
+        ]
+    ], 200);
+}
+
+
 
 
 }
