@@ -11,7 +11,7 @@
             Schema::create('wallets', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-                $table->string('user_type')->default('creator'); 
+                $table->string('user_type')->default('idea_owner'); 
                 $table->decimal('balance', 15, 2)->default(0);
                 $table->enum('status', ['active', 'inactive', 'frozen'])->default('active');
                 $table->timestamps();

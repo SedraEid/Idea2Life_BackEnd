@@ -36,12 +36,10 @@ class User extends Authenticatable
     ];
 
 
-      public function ideaowner()
-    {
-return $this->hasOne(IdeaOwner::class);
-    }
-
-
+public function ideas()
+{
+    return $this->hasMany(Idea::class, 'owner_id');
+}
        public function committeeMember()
     {
         return $this->hasOne(CommitteeMember::class);

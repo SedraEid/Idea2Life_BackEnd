@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 use Carbon\Carbon;
 use App\Models\Committee;
 use App\Models\Idea;
-use App\Models\IdeaOwner;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
@@ -35,16 +34,13 @@ class IdeaController extends Controller
         return response()->json(['message' => 'يجب الموافقة على الشروط والأحكام قبل الإرسال.'], 403);
     }
 
-    $user = $request->user();//
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-    if (!$ideaOwner) {
-        return response()->json(['message' => 'المستخدم ليس مسجلاً كصاحب فكرة.'], 403);
-    }
-
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
+  $user = $request->user();
+if ($user->role !== 'idea_owner') {
+    return response()->json(['message' => 'المستخدم ليس مسجلاً كصاحب فكرة.'], 403);
+}
 
     $idea = Idea::create([
-        'owner_id' => $ideaOwner->id,
+        'owner_id' => $user->id,
         'title' => $request->title,
         'description' => $request->description,
         'problem' => $request->problem,
@@ -82,8 +78,6 @@ class IdeaController extends Controller
 
  $roadmap = Roadmap::create([
     'idea_id' => $idea->id,
-    'committee_id' => $committee->id,
-    'owner_id' => $ideaOwner->id,
     'current_stage' => $initialStageName,
     'stage_description' => 'تم تسجيل الفكرة وهي الآن في المرحلة: ' . $initialStageName,
     'progress_percentage' => $progressPercentage,
@@ -93,8 +87,6 @@ class IdeaController extends Controller
 $initialMeetingDate = now()->addDays(2);
 $meeting = Meeting::create([
     'idea_id' => $idea->id,
-    'owner_id' => $ideaOwner->id,
-    'committee_id' => $committee->id,
     'meeting_date' => $initialMeetingDate,
     'type' => 'initial',
     'requested_by' => 'committee',
@@ -117,9 +109,7 @@ $meeting = Meeting::create([
 public function update(Request $request, Idea $idea) // تعديل الفكرة بعد التقييم الضعيف
 {
     $user = $request->user();
-
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-    if (!$ideaOwner || $ideaOwner->id !== $idea->owner_id) {
+      if ($user->id !== $idea->owner_id || $user->role !== 'idea_owner') {
         return response()->json(['message' => 'ليس لديك صلاحية لتعديل هذه الفكرة.'], 403); 
     }
     if ($idea->status === 'needs_revision') {
@@ -127,19 +117,15 @@ public function update(Request $request, Idea $idea) // تعديل الفكرة 
             ->where('report_type', 'initial_evaluation')
             ->latest()
             ->first();
-
         if (!$initialReport || $initialReport->evaluation_score < 50 || $initialReport->evaluation_score >= 80) {
             return response()->json(['message' => 'لا يمكن تعديل الفكرة في هذه المرحلة.'], 403);
         }
     }if ($idea->status === 'approved') {
     return response()->json(['message' => 'لا يمكن تعديل الفكرة بعد الموافقة.'], 403);
 }
-
 if ($idea->status === 'rejected') {
     return response()->json(['message' => 'تم رفض هذه الفكرة بشكل نهائي ولا يمكن تعديلها. الرجاء تقديم فكرة جديدة إذا كنت ترغب بالمتابعة.'], 403);
 }
-
-
     $validator = Validator::make($request->all(), [
         'title' => 'sometimes|string|max:255',
         'description' => 'sometimes|string',
@@ -148,58 +134,45 @@ if ($idea->status === 'rejected') {
         'target_audience' => 'nullable|string',
         'additional_notes' => 'nullable|string',
     ]);
-
     if ($validator->fails()) {
         return response()->json(['errors' => $validator->errors()], 422);
     }
     $idea->update($validator->validated());
-
     if ($idea->status === 'needs_revision') {
         $idea->update([
             'roadmap_stage' => 'بانتظار إعادة التقييم بعد التعديلات',
-        ]);
-
-    }
-
+        ]); }
     return response()->json([
         'message' => 'تم تعديل الفكرة بنجاح.',
         'idea' => $idea,
     ]);
 }
 
-
-
-
-
-public function committeeIdeas(Request $request)//يعرض الافكار التي تشرف عليها اللجنة 
+public function committee_Ideas(Request $request)//بيرجع الافكار يلي بتاشرف عليها اللجنة 
 {
     $user = $request->user();
-
     if (!$user->committeeMember) {
         return response()->json(['message' => 'ليس لديك صلاحية الوصول.'], 403);
     }
-
     $committeeId = $user->committeeMember->committee_id;
-    $ideas = Idea::where('committee_id', $committeeId)->get();
+    $ideas = Idea::where('committee_id', $committeeId)
+                 ->with(['committee.committeeMember.user', 'owner'])
+                 ->get();
     return response()->json([
         'committee_id' => $committeeId,
         'ideas' => $ideas
     ]);
 }
 
-
 public function getUserIdeasWithCommittee(Request $request)//يعرض اللجنة و الاعضاء التي تشرف على فكرة لصاحب الفكرة
 {
     $user = $request->user();
-
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-    if (!$ideaOwner) {
+    if ($user->role !== 'idea_owner') {
         return response()->json([
             'message' => 'المستخدم ليس لديه حساب صاحب فكرة.'
         ], 404);
     }
-
-    $ideas = Idea::where('owner_id', $ideaOwner->id)
+    $ideas = Idea::where('owner_id', $user->id)
         ->with(['committee.committeeMember.user']) 
         ->get();
 
@@ -208,7 +181,6 @@ public function getUserIdeasWithCommittee(Request $request)//يعرض اللجن
             'message' => 'لا توجد أفكار مملوكة لهذا المستخدم.'
         ], 404);
     }
-
     $data = $ideas->map(function($idea) {
         $committee = $idea->committee;
         return [
@@ -228,7 +200,6 @@ public function getUserIdeasWithCommittee(Request $request)//يعرض اللجن
             ] : null
         ];
     });
-
     return response()->json([
         'ideas' => $data
     ]);
@@ -240,8 +211,8 @@ public function getUserIdeasWithCommittee(Request $request)//يعرض اللجن
 public function getIdeasWithCommittee()//جلب كل الافكار مع اللجنة المشرفة على كل فكرة
 {
     $ideas = Idea::with([
-        'committee.committeeMember.user',  
-        'ideaowner.user',        
+         'committee.committeeMember.user',  
+        'owner',          
     ])->get();
     $data = $ideas->map(function ($idea) {
         return [
@@ -249,11 +220,6 @@ public function getIdeasWithCommittee()//جلب كل الافكار مع الل�
             'title' => $idea->title,
             'description' => $idea->description,
             'status' => $idea->status,
-            'idea_owner' => [
-                'id' => $idea->ideaowner?->id,
-                'name' => $idea->ideaowner?->user?->name,
-                'email' => $idea->ideaowner?->user?->email,
-            ],
             'committee' => [
                 'id' => $idea->committee?->id,
                 'name' => $idea->committee?->committee_name,
@@ -281,20 +247,17 @@ public function getIdeasWithCommittee()//جلب كل الافكار مع الل�
 public function myIdeas(Request $request) // تابع جلب افكار صاحب الفكرة مع أعضاء اللجنة
 {
     $user = $request->user();
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-    if (!$ideaOwner) {
+    if ($user->role !== 'idea_owner') {
         return response()->json([
             'message' => 'المستخدم ليس لديه أفكار بعد.'
         ], 404);
     }
-
-    $ideas = Idea::where('owner_id', $ideaOwner->id)
+    $ideas = Idea::where('owner_id', $user->id)
         ->with([
             'committee.committeeMember.user', 
             'roadmap'
         ])
         ->get();
-
     $data = $ideas->map(function ($idea) {
         return [
             'id' => $idea->id,
@@ -318,7 +281,6 @@ public function myIdeas(Request $request) // تابع جلب افكار صاحب
             'created_at' => $idea->created_at->format('Y-m-d H:i'),
         ];
     });
-
     return response()->json([
         'message' => 'تم جلب جميع أفكار المستخدم بنجاح.',
         'ideas' => $data

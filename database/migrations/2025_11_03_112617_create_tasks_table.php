@@ -19,10 +19,6 @@ return new class extends Migration
                   ->constrained('gantt_charts')
                   ->onDelete('cascade'); 
 
-            $table->foreignId('owner_id')
-                  ->nullable()
-                  ->constrained('users')
-                  ->onDelete('set null'); 
 
 
             $table->string('task_name', 255);

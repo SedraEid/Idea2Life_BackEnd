@@ -11,10 +11,7 @@ class Funding extends Model
 
          protected $fillable = [
         'idea_id',
-        'idea_owner_id',
-        'committee_id',
         'investor_id',
-        'meeting_id',
         'requested_amount',
         'justification',
         'committee_notes',
@@ -32,27 +29,11 @@ class Funding extends Model
     {
         return $this->belongsTo(Idea::class);
     }
-     
-      public function ideaOwner()
-    {
-        return $this->belongsTo(IdeaOwner::class);
-    }  
-
-
-     public function committee()
-    {
-        return $this->belongsTo(Committee::class);
-    } 
 
       public function investor()
 {
     return $this->belongsTo(CommitteeMember::class, 'investor_id');
 }
-
-       public function meeting()
-    {
-        return $this->belongsTo(Meeting::class);
-    }  
 
       public function walletTransactions()
     {

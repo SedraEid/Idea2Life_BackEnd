@@ -14,7 +14,6 @@ class Task extends Model
    protected $fillable = [
         'idea_id',
         'gantt_id',
-        'owner_id',
         'task_name',
         'description',
         'start_date',
@@ -33,11 +32,6 @@ class Task extends Model
     public function gantt()
     {
         return $this->belongsTo(GanttChart::class, 'gantt_id');
-    }
-
-    public function ideaowner()
-    {
-        return $this->belongsTo(User::class, 'owner_id');
     }
 
   public function funding()

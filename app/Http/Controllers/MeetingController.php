@@ -9,37 +9,27 @@ use Illuminate\Http\Request;
 
 class MeetingController extends Controller
 {
-    public function upcomingMeetings(Request $request, $idea_id)//جلب الاجتماعات الخاصة بصاحب الفكرة 
+public function upcomingMeetings(Request $request, $idea_id) // جلب الاجتماعات الخاصة بصاحب الفكرة
 {
     $user = $request->user();
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-    if (!$ideaOwner) {
-        return response()->json([
-            'message' => 'المستخدم ليس لديه أفكار بعد.'
-        ], 404);
-    }
-
-    $idea = $ideaOwner->ideas()->where('id', $idea_id)->first();
+    $idea = Idea::where('id', $idea_id)
+        ->where('owner_id', $user->id) 
+        ->first();
     if (!$idea) {
         return response()->json([
             'message' => 'هذه الفكرة لا تتبع لك أو غير موجودة.',
         ], 404);
     }
-
-    $meetings = Meeting::with(['idea:id,title', 'committee:id,committee_name'])
-        ->where('owner_id', $ideaOwner->id)
-        ->where('idea_id', $idea_id)
+    $meetings = $idea->meetings() 
         ->where('meeting_date', '>=', now())
         ->orderBy('meeting_date', 'asc')
         ->get()
-           ->map(function ($meeting) {
+        ->map(function ($meeting) use ($idea) {
             $hoursLeft = $meeting->meeting_date->diffInHours(now());
             $isSoon = $hoursLeft <= 24;
-
             return [
                 'id' => $meeting->id,
-                'idea_title' => $meeting->idea?->title,
-                'committee_name' => $meeting->committee?->committee_name,
+                'idea_title' => $idea->title,
                 'meeting_date' => $meeting->meeting_date->format('Y-m-d H:i'),
                 'meeting_link' => $meeting->meeting_link,
                 'notes' => $meeting->notes,
@@ -52,10 +42,11 @@ class MeetingController extends Controller
 
     return response()->json([
         'message' => 'تم جلب الاجتماعات القادمة لهذه الفكرة بنجاح.',
-        'idea_id' => $idea_id,
+        'idea_id' => $idea->id,
         'upcoming_meetings' => $meetings
     ]);
 }
+
 
 public function committee_Ideas_meetings(Request $request) // عرض الأفكار مع الاجتماعات وصاحب الفكرة للجنة
 {
@@ -66,24 +57,22 @@ public function committee_Ideas_meetings(Request $request) // عرض الأفك�
             'message' => 'أنت لست عضوًا في لجنة.'
         ], 403);
     }
-
     $committeeId = $user->committeeMember->committee_id;
 
-    $ideas = \App\Models\Idea::with([
-            'ideaowner.user', 
+    $ideas = Idea::with([
+            'owner', 
             'meetings'
         ])
         ->where('committee_id', $committeeId)
         ->get()
         ->map(function ($idea) {
-            $owner = $idea->ideaowner?->user;
-
+            $owner = $idea->owner; 
             return [
                 'idea_id' => $idea->id,
                 'title' => $idea->title,
                 'description' => $idea->description,
                 'status' => $idea->status,
-                'meeting' => $idea->meetings->map(function ($m) {
+                'meetings' => $idea->meetings->map(function ($m) {
                     return [
                         'meeting_id' => $m->id,
                         'meeting_date' => $m->meeting_date?->format('Y-m-d H:i'),
@@ -112,7 +101,7 @@ public function committee_Ideas_meetings(Request $request) // عرض الأفك�
 
 
 
-public function updateMeeting(Request $request, $meetingId)//تحديد رابط الاجتماع و الملاحظات من قبل اللجنة 
+public function updateMeeting(Request $request, $meetingId) // تحديد رابط الاجتماع و الملاحظات من قبل اللجنة
 {
     $user = $request->user();
 
@@ -120,48 +109,39 @@ public function updateMeeting(Request $request, $meetingId)//تحديد رابط
         return response()->json(['message' => 'أنت لست عضو لجنة.'], 403);
     }
 
-    $meeting = Meeting::find($meetingId);
+    $meeting = Meeting::with('idea')->find($meetingId);
     if (!$meeting) {
         return response()->json(['message' => 'الاجتماع غير موجود.'], 404);
     }
-
-    if ($meeting->committee_id != $user->committeeMember->committee_id) {
+    if ($meeting->idea?->committee_id != $user->committeeMember->committee_id) {
         return response()->json(['message' => 'ليس لديك صلاحية تعديل هذا الاجتماع.'], 403);
     }
-
     $validatedData = $request->validate([
         'meeting_link' => 'nullable|url',
         'notes' => 'nullable|string',
         'meeting_date' => 'nullable|date|after_or_equal:today',
     ]);
-
     $meeting->update([
         'meeting_link' => $validatedData['meeting_link'] ?? $meeting->meeting_link,
         'notes' => $validatedData['notes'] ?? $meeting->notes,
         'meeting_date' => $validatedData['meeting_date'] ?? $meeting->meeting_date, 
     ]);
-
     return response()->json([
-        'message' => 'تم تحديث رابط الاجتماع والملاحظات ',
+        'message' => 'تم تحديث رابط الاجتماع والملاحظات.',
         'meeting' => $meeting,
     ]);
 }
 
-
-
-public function scheduleAdvancedMeeting(Request $request, Idea $idea)//عمل اجتماع من قبل اللجنة من اجل مناقشة خطة العمل
+public function scheduleAdvancedMeeting(Request $request, Idea $idea) // عمل اجتماع من قبل اللجنة من اجل مناقشة خطة العمل
 {
     $user = $request->user();
-
     if (!$user->committeeMember || $user->committeeMember->committee_id != $idea->committee_id) {
         return response()->json(['message' => 'ليس لديك صلاحية جدولة الاجتماع لهذه الفكرة.'], 403);
     }
-
-    $ideaOwner = $idea->ideaowner;
+    $ideaOwner = $idea->owner; 
     if (!$ideaOwner) {
         return response()->json(['message' => 'الفكرة لا تملك صاحب.'], 404);
     }
-
     $meeting = $idea->meetings()->where('type', 'business_plan_review')->first();
     if ($meeting) {
         $meeting->update([
@@ -172,8 +152,6 @@ public function scheduleAdvancedMeeting(Request $request, Idea $idea)//عمل ا
     } else {
         $meeting = $idea->meetings()->create([
             'idea_id' => $idea->id,
-            'owner_id' => $ideaOwner->id,
-            'committee_id' => $idea->committee_id,
             'meeting_date' => $request->meeting_date ?? now()->addDays(3),
             'meeting_link' => $request->meeting_link ?? null,
             'notes' => $request->notes ?? null,
@@ -188,32 +166,28 @@ public function scheduleAdvancedMeeting(Request $request, Idea $idea)//عمل ا
 }
 
 
-
-public function upcomingCommitteeMeetings(Request $request)//عرض الاجتماعات الخاصة باللجنة 
+public function upcomingCommitteeMeetings(Request $request) // عرض الاجتماعات الخاصة باللجنة
 {
     $user = $request->user();
-
     if (!$user->committeeMember) {
         return response()->json([
             'message' => 'أنت لست عضو لجنة.'
         ], 403);
     }
-
     $committeeId = $user->committeeMember->committee_id;
-
-    $meetings = Meeting::with(['idea:id,title', 'committee:id,committee_name'])
-        ->where('committee_id', $committeeId)
+    $meetings = Meeting::with(['idea:id,title'])
+        ->whereHas('idea', function ($q) use ($committeeId) {
+            $q->where('committee_id', $committeeId);
+        })
         ->where('meeting_date', '>=', now())
         ->orderBy('meeting_date', 'asc')
         ->get()
         ->map(function ($meeting) {
             $hoursLeft = $meeting->meeting_date->diffInHours(now());
             $isSoon = $hoursLeft <= 24;
-
             return [
                 'id' => $meeting->id,
                 'idea_title' => $meeting->idea?->title,
-                'committee_name' => $meeting->committee?->committee_name,
                 'meeting_date' => $meeting->meeting_date->format('Y-m-d H:i'),
                 'meeting_link' => $meeting->meeting_link,
                 'notes' => $meeting->notes,
@@ -223,13 +197,11 @@ public function upcomingCommitteeMeetings(Request $request)//عرض الاجتم
                 'is_soon' => $isSoon,
             ];
         });
-
     return response()->json([
         'message' => 'تم جلب الاجتماعات القادمة الخاصة باللجنة بنجاح.',
         'upcoming_meetings' => $meetings
     ]);
 }
-
 
 
 }

@@ -40,7 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {//اضافة فكرة
 });
 Route::middleware('auth:sanctum')->put('/ideas/{idea}', [IdeaController::class, 'update']);//تعديل الفكرة من قبل صاحبها بعد التقييم الضعيف
 Route::middleware('auth:sanctum')->post('/ideas/{idea}/evaluate', [ReportController::class, 'evaluate']);//تقييم الفكرة من قبل اللجنة
-Route::middleware('auth:sanctum')->get('/committee/ideas', [IdeaController::class, 'committeeIdeas']);//عرض كل الافكار التي تشرف عليها اللجنة
+Route::middleware('auth:sanctum')->get('/committee/ideas', [IdeaController::class, 'committee_Ideas']);//عرض كل الافكار التي تشرف عليها اللجنة
 Route::middleware('auth:sanctum')->get('/my-committee', [IdeaController::class, 'getUserIdeasWithCommittee']);//عرض اللجان او اللجنة التي تشرف على فكرة صاحب الفكرة 
 
 Route::middleware('auth:sanctum')->group(function () {//ملئ مخطط ال bmc
@@ -60,7 +60,7 @@ Route::middleware('auth:sanctum')->get('/idea/{idea_id}/meetings/upcoming', //ي
     [MeetingController::class, 'upcomingMeetings']);
 
 Route::middleware('auth:sanctum')->group(function () {
-    // عرض كل الأفكار التابعة للجنة
+    //  مع الاجتماعات عرض كل الأفكار التابعة للجنة
     Route::get('/committee/ideas', [MeetingController::class, 'committee_Ideas_meetings']);
     Route::put('/committee/meetings/{meeting}', [MeetingController::class, 'updateMeeting']);//وضع اللينك و الملاحظات للاجتماع من قبل اللجنة 
   
@@ -94,6 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {//جلب طلبات الت
     Route::get('/committee/fundings', [FundingController::class, 'getCommitteeFundRequests']);
 });
 
+
 Route::middleware('auth:sanctum')->group(function () {//تقييم طلب التمويل من قبل اللجنة
     Route::post('/fundings/{funding}/evaluate', [FundingController::class, 'evaluateFunding']);
 });
@@ -103,7 +104,6 @@ Route::middleware('auth:sanctum')->group(function () {//عرض التمويل ل
 Route::get('/my-ideas/{idea_id}/funding', [FundingController::class, 'showFundingForIdea']);
 
 });
-
 
 Route::middleware('auth:sanctum')->get('/committee/funding-checks', [FundingController::class, 'showCommitteeFundingChecks']);//عرض الشيك للجنة
 

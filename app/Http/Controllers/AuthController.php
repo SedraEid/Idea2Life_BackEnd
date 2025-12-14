@@ -4,12 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Committee;
 use App\Models\CommitteeMember;
-use App\Models\IdeaOwner;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use App\Models\Roadmap;
 use App\Models\Wallet;
 
 class AuthController extends Controller
@@ -34,13 +32,9 @@ class AuthController extends Controller
         'role' => 'idea_owner',
     ]);
 
-    $ideaOwner = IdeaOwner::create([
-        'user_id' => $user->id,
-    ]);
-
     $wallet = Wallet::create([
         'user_id'   => $user->id,
-        'user_type' => 'creator',
+        'user_type' => 'idea_owners',
         'balance'   => 0,        
         'status'    => 'active', 
     ]);
@@ -143,7 +137,6 @@ $wallet = Wallet::create([
 }
 
 //تسجيل الدخول لاعضاء اللجنة 
-
 public function loginCommitteeMember(Request $request)
 {
     $request->validate([

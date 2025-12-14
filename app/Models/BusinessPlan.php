@@ -10,10 +10,6 @@ class BusinessPlan extends Model
     use HasFactory;
      protected $fillable = [
         'idea_id',
-        'owner_id',
-        'committee_id',
-        'report_id',
-        'meeting_id',
         'key_partners',
         'key_activities',
         'key_resources',
@@ -31,29 +27,6 @@ class BusinessPlan extends Model
       public function idea()
     {
         return $this->belongsTo(Idea::class);
-    }
-
-   
-    public function ideaowner()
-    {
-        return $this->belongsTo(User::class);
-    }
-
-   
-    public function committee()
-    {
-        return $this->belongsTo(Committee::class);
-    }
-
- 
-    public function report()
-    {
-        return $this->belongsTo(Report::class);
-    }
-
-    public function meeting()
-    {
-        return $this->belongsTo(Meeting::class);
     }
 
 }

@@ -14,10 +14,6 @@ return new class extends Migration
         Schema::create('business_plans', function (Blueprint $table) {
             $table->id();            
             $table->foreignId('idea_id')->constrained('ideas')->onDelete('cascade');
-            $table->foreignId('owner_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('committee_id')->nullable()->constrained('committees')->onDelete('set null');
-            $table->foreignId('report_id')->nullable()->constrained('reports')->onDelete('set null');
-            $table->foreignId('meeting_id')->nullable()->constrained('meetings')->onDelete('set null');
             $table->text('key_partners')->nullable();
             $table->text('key_activities')->nullable();
             $table->text('key_resources')->nullable();

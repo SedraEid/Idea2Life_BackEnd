@@ -23,8 +23,6 @@ class CommitteeMember extends Model
         return $this->belongsTo(User::class);
     }
 
-   
-
        public function fundings()
     {
         return $this->hasMany(Funding::class, 'investor_id');

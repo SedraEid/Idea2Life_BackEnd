@@ -22,12 +22,10 @@ class Idea extends Model
         'initial_evaluation_score'
     ];
 
-
-
-      public function ideaowner()
-    {
-        return $this->belongsTo(IdeaOwner::class,'owner_id');
-    }
+    public function owner()
+{
+    return $this->belongsTo(User::class, 'owner_id');
+}
 
      public function committee()
     {

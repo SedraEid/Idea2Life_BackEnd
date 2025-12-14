@@ -6,7 +6,6 @@ use App\Models\BusinessPlan;
 use App\Models\CommitteeMember;
 use App\Models\Evaluation;
 use App\Models\Idea;
-use App\Models\IdeaOwner;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
@@ -20,9 +19,8 @@ class BusinessPlanController extends Controller
 public function store(Request $request, Idea $idea)
 {
     $user = $request->user();
-    $ideaOwner = $idea->ideaowner;
-
-    if (!$ideaOwner || $ideaOwner->user_id !== $user->id) {
+    $ideaOwner = $idea->owner; 
+    if (!$ideaOwner || $ideaOwner->id !== $user->id) {
         return response()->json([
             'message' => 'ليس لديك صلاحية إنشاء خطة العمل لهذه الفكرة.'
         ], 403);
@@ -32,13 +30,11 @@ public function store(Request $request, Idea $idea)
             'message' => 'لم يتم تقييم الفكرة بعد، لا يمكنك الانتقال إلى مرحلة خطة العمل.'
         ], 400);
     }
-
     if ($idea->initial_evaluation_score < 80) {
         return response()->json([
             'message' => 'لم تحقق الفكرة الحد الأدنى من التقييم (80) للانتقال إلى خطة العمل.'
         ], 400);
     }
-
     $request->validate([
         'key_partners' => 'nullable|string',
         'key_activities' => 'nullable|string',
@@ -50,8 +46,12 @@ public function store(Request $request, Idea $idea)
         'cost_structure' => 'nullable|string',
         'revenue_streams' => 'nullable|string',
     ]);
-
     $businessPlan = $idea->businessPlan;
+     if ($businessPlan && $businessPlan->status === 'approved') {
+        return response()->json([
+            'message' => 'خطة العمل الخاصة بهذه الفكرة مقبولة بالفعل ولا يمكن تعديلها.',
+        ], 400);
+    }
     if ($businessPlan) {
         $businessPlan->update([
             'key_partners' => $request->key_partners,
@@ -64,15 +64,11 @@ public function store(Request $request, Idea $idea)
             'cost_structure' => $request->cost_structure,
             'revenue_streams' => $request->revenue_streams,
             'status' => 'under_review',
-            'latest_score' => 0, 
+            'latest_score' => 0,
         ]);
     } else {
         $businessPlan = BusinessPlan::create([
             'idea_id' => $idea->id,
-            'owner_id' => $ideaOwner->id,
-            'committee_id' => $idea->committee_id ?? null,
-            'report_id' => null,
-            'meeting_id' => null,
             'key_partners' => $request->key_partners,
             'key_activities' => $request->key_activities,
             'key_resources' => $request->key_resources,
@@ -82,46 +78,37 @@ public function store(Request $request, Idea $idea)
             'customer_segments' => $request->customer_segments,
             'cost_structure' => $request->cost_structure,
             'revenue_streams' => $request->revenue_streams,
-            'status' => 'draft',
-            'latest_score' => 0, 
+            'status' => 'under_review',
+            'latest_score' => 0,
         ]);
     }
-
     $meeting = $idea->meetings()->where('type', 'business_plan_review')->first();
-$notes = "تم تحديد موعد الاجتماع لمراجعة وتقييم خطة العمل. 
+    $notes = "تم تحديد موعد الاجتماع لمراجعة وتقييم خطة العمل. 
 يرجى من صاحب الفكرة ولجنة التقييم الحضور لمناقشة التفاصيل وإصدار تقرير التقييم.";
-
-if ($meeting) {
-    $meeting->update([
-        'meeting_date' => now()->addDays(2),
-        'requested_by' => 'committee',
-        'notes' => $notes
-    ]);
-} else {
-    $meeting = $idea->meetings()->create([
-        'owner_id' => $ideaOwner->id,
-        'committee_id' => $idea->committee_id,
-        'report_id' => null,
-        'meeting_date' => now()->addDays(3),
-        'type' => 'business_plan_review',
-        'requested_by' => 'committee',
-        'meeting_link' => null,
-        'notes' => $notes
-    ]);
-}
-
+    if ($meeting) {
+        $meeting->update([
+            'meeting_date' => now()->addDays(2),
+            'requested_by' => 'committee',
+            'notes' => $notes
+        ]);
+    } else {
+        $meeting = $idea->meetings()->create([
+            'meeting_date' => now()->addDays(3),
+            'type' => 'business_plan_review',
+            'requested_by' => 'committee',
+            'meeting_link' => null,
+            'notes' => $notes
+        ]);
+    }
     $report = $idea->reports()->where('report_type', 'advanced')->first();
-
     if ($report) {
         $report->update([
-            'committee_id' => $idea->committee_id,
             'description' => 'تحديث تقييم خطة العمل بعد الاجتماع.',
             'status' => 'pending',
             'meeting_id' => $meeting->id,
         ]);
     } else {
         $report = $idea->reports()->create([
-            'committee_id' => $idea->committee_id,
             'description' => 'تقييم خطة العمل بعد الاجتماع.',
             'report_type' => 'advanced',
             'evaluation_score' => null,
@@ -132,13 +119,7 @@ if ($meeting) {
             'meeting_id' => $meeting->id,
         ]);
     }
-
-    $businessPlan->update([
-        'meeting_id' => $meeting->id,
-        'report_id' => $report->id,
-    ]);
-
-     $roadmapStages = [
+    $roadmapStages = [
         "تقديم الفكرة",
         "التقييم الأولي",
         "التخطيط المنهجي",
@@ -167,6 +148,18 @@ if ($meeting) {
     $idea->update([
         'roadmap_stage' => 'خطة العمل قيد المراجعة',
     ]);
+        if ($idea->committee) {
+        foreach ($idea->committee->committeeMember as $member) {
+            Notification::create([
+                'user_id' => $member->user_id,
+                'title' => 'تم كتابة خطة العمل',
+                'message' => "تم إنشاء أو تحديث خطة العمل للفكرة '{$idea->title}'. يرجى الاطلاع عليها.",
+                'type' => 'business_plan_written',
+                'is_read' => false,
+            ]);
+        }
+    }
+
     return response()->json([
         'message' => 'تم إنشاء خطة العمل، الاجتماع، التقرير وسجل التقييم وتحديث المراحل بنجاح',
         'business_plan' => $businessPlan,
@@ -187,11 +180,29 @@ public function showAllBMCsForCommittee(Request $request)
         ], 403);
     }
     $committeeId = $user->committeeMember->committee_id;
-    $ideas = \App\Models\Idea::where('committee_id', $committeeId)
-        ->whereHas('businessPlan') 
-        ->with('businessPlan') 
+    $ideas = Idea::where('committee_id', $committeeId)
+        ->whereHas('businessPlan')
+        ->with(['businessPlan' => function($query) {
+            $query->select(
+                'id',
+                'idea_id',
+                'key_partners',
+                'key_activities',
+                'key_resources',
+                'value_proposition',
+                'customer_relationships',
+                'channels',
+                'customer_segments',
+                'cost_structure',
+                'revenue_streams',
+                'status',
+                'latest_score',
+                'created_at'
+            );
+        }])
         ->orderBy('created_at', 'desc')
         ->get();
+
     if ($ideas->isEmpty()) {
         return response()->json([
             'message' => 'لا توجد أفكار تحتوي على خطة عمل للمراجعة حالياً.',
@@ -200,7 +211,7 @@ public function showAllBMCsForCommittee(Request $request)
         ], 200);
     }
     $formatted = $ideas->map(function ($idea) {
-        $plan = $idea->businessPlan; 
+        $plan = $idea->businessPlan;
         return [
             'idea_id' => $idea->id,
             'idea_title' => $idea->title,
@@ -219,7 +230,7 @@ public function showAllBMCsForCommittee(Request $request)
                 'cost_structure' => $plan->cost_structure,
                 'revenue_streams' => $plan->revenue_streams,
                 'status' => $plan->status,
-                'latest_score' =>$plan->latest_score,
+                'latest_score' => $plan->latest_score,
                 'created_at' => $plan->created_at->format('Y-m-d H:i'),
             ] : null,
         ];
@@ -233,24 +244,22 @@ public function showAllBMCsForCommittee(Request $request)
 
 
 
-public function updateBMC(Request $request, Idea $idea)//تعديل خطة العمل بعد التقييم الاقل من 80
+public function updateBMC(Request $request, Idea $idea) // تعديل خطة العمل بعد التقييم الأقل من 80
 {
     $user = $request->user();
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-
-    if (!$ideaOwner || $idea->owner_id != $ideaOwner->id) {
+    $ideaOwner = $idea->owner; 
+    if (!$ideaOwner || $ideaOwner->id !== $user->id) {
         return response()->json([
             'message' => 'ليس لديك صلاحية لتعديل خطة العمل لهذه الفكرة.'
         ], 403);
     }
-    $businessPlan = $idea->businessPlan()->first();
+    $businessPlan = $idea->businessPlan;
     if (!$businessPlan) {
         return response()->json([
             'message' => 'لا توجد خطة عمل لهذه الفكرة، لا يمكن تعديل الـ BMC.'
         ], 404);
     }
-    $score = $businessPlan->latest_score ?? 0;
-    if ($score >= 80) {
+    if ($businessPlan->latest_score >= 80 || $businessPlan->status === 'approved') {
         return response()->json([
             'message' => 'تمت الموافقة على خطة العمل بشكل نهائي، لا يمكن تعديل الـ BMC بعد الآن.'
         ], 403);
@@ -272,7 +281,7 @@ public function updateBMC(Request $request, Idea $idea)//تعديل خطة ال�
     }
     $businessPlan->update(array_merge(
         $validator->validated(),
-        ['status' => 'needs_revision']
+        ['status' => 'needs_revision'] 
     ));
     $roadmapStages = [
         "تقديم الفكرة",
@@ -299,11 +308,21 @@ public function updateBMC(Request $request, Idea $idea)//تعديل خطة ال�
             'next_step' => 'إعادة تقديم الخطة للتقييم المتقدم',
         ]);
     }
-
     $idea->update([
         'roadmap_stage' => $currentStageName,
     ]);
-
+    $committeeMembers = $idea->committee?->committeeMember;
+    if ($committeeMembers) {
+        foreach ($committeeMembers as $member) {
+            Notification::create([
+                'user_id' => $member->user_id,
+                'title' => 'تم تعديل خطة العمل لفكرة',
+                'message' => "تم تعديل خطة العمل للفكرة '{$idea->title}'. يرجى مراجعتها مرة أخرى.",
+                'type' => 'bmc_updated',
+                'is_read' => false,
+            ]);
+        }
+    }
     return response()->json([
         'message' => 'تم تعديل خطة العمل بنجاح. يرجى إعادة تقديمها للمراجعة.',
         'business_plan' => $businessPlan,
@@ -311,31 +330,19 @@ public function updateBMC(Request $request, Idea $idea)//تعديل خطة ال�
 }
 
 
-
-public function showOwnerIdeaBMC(Request $request, $idea_id)//جلب ال BMC لصاحب الفكرة و لفكرة محددة
+public function showOwnerIdeaBMC(Request $request, $idea_id) // جلب الـ BMC لصاحب الفكرة ولفكرة محددة
 {
     $user = $request->user();
-
-    $ideaOwner = IdeaOwner::where('user_id', $user->id)->first();
-
-    if (!$ideaOwner) {
-        return response()->json([
-            'message' => 'أنت لا تملك أي أفكار.'
-        ], 404);
-    }
-    $idea = $ideaOwner->ideas()
+    $idea = Idea::where('id', $idea_id)
+        ->where('owner_id', $user->id) 
         ->with('businessPlan')
-        ->where('id', $idea_id)
         ->first();
-
     if (!$idea) {
         return response()->json([
             'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لك.'
         ], 404);
     }
-
     $bmc = $idea->businessPlan;
-
     return response()->json([
         'message' => 'تم جلب خطة العمل بنجاح.',
         'idea' => [
@@ -361,9 +368,6 @@ public function showOwnerIdeaBMC(Request $request, $idea_id)//جلب ال BMC ل
         ]
     ], 200);
 }
-
-
-
 
 
     

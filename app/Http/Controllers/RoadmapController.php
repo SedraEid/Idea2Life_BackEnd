@@ -8,20 +8,15 @@ use Illuminate\Http\Request;
 class RoadmapController extends Controller
 {
     
-public function getIdeaRoadmap(Request $request, Idea $idea)//جلب خارطة الطريق  للفكرة
+public function getIdeaRoadmap(Request $request, Idea $idea) // جلب خارطة الطريق للفكرة
 {
     $user = $request->user();
-
-    $ideaOwner = $idea->ideaowner;
-    $isOwner = $ideaOwner && $ideaOwner->user_id === $user->id;
+    $isOwner = $idea->owner_id === $user->id;
     $isCommittee = $user->committeeMember && $user->committeeMember->committee_id === $idea->committee_id;
-
     if (!$isOwner && !$isCommittee) {
         return response()->json(['message' => 'ليس لديك صلاحية الوصول لخارطة الطريق.'], 403);
     }
-
     $roadmap = $idea->roadmap;
-
     if (!$roadmap) {
         return response()->json(['message' => 'لا توجد خارطة طريق لهذه الفكرة.'], 404);
     }
@@ -38,4 +33,5 @@ public function getIdeaRoadmap(Request $request, Idea $idea)//جلب خارطة 
         ]
     ]);
 }
+
 }

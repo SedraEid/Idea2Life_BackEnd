@@ -17,16 +17,13 @@ use Illuminate\Support\Facades\Validator;
 
 class FundingController extends Controller
 {
-
-public function requestFunding(Request $request, Idea $idea)//طلب تمويل من قبل صاحب الفكرة
+public function requestFunding(Request $request, Idea $idea) // طلب تمويل من قبل صاحب الفكرة
 {
     $user = $request->user();
-    $ideaOwner = $idea->ideaOwner;
-
-    if (!$ideaOwner || $ideaOwner->user_id !== $user->id) {
+    $ideaOwner = $idea->owner; 
+    if (!$ideaOwner || $ideaOwner->id !== $user->id) {
         return response()->json(['message' => 'ليس لديك صلاحية طلب التمويل لهذه الفكرة.'], 403);
     }
-
     $businessPlan = $idea->businessPlan;
     if (!$businessPlan) {
         return response()->json(['message' => 'لا يمكن تقديم طلب تمويل قبل إعداد خطة العمل.'], 400);
@@ -34,67 +31,46 @@ public function requestFunding(Request $request, Idea $idea)//طلب تمويل 
     if ($businessPlan->latest_score < 80) {
         return response()->json(['message' => 'خطة العمل لم تحقق الحد الأدنى من التقييم (80) لطلب التمويل.'], 400);
     }
-
     $existingFunding = Funding::where('idea_id', $idea->id)
-        ->where('idea_owner_id', $ideaOwner->id)
         ->whereIn('status', ['requested', 'under_review', 'approved'])
         ->first();
-        
-if ($existingFunding && $existingFunding->status !== 'rejected') {
-    return response()->json([
-        'message' => 'لا يمكنك طلب تمويل جديد قبل مراجعة الطلب الحالي.',
-        'existing_funding' => $existingFunding
-    ], 400);
-}
-
     if ($existingFunding) {
         return response()->json([
             'message' => 'لا يمكنك طلب تمويل جديد قبل مراجعة الطلب الحالي.',
             'existing_funding' => $existingFunding
         ], 400);
     }
-
     $request->validate([
         'requested_amount' => 'required|numeric|min:1',
         'justification' => 'required|string|max:1000',
     ]);
-
-     if (!$idea->committee) {
+    if (!$idea->committee) {
         return response()->json(['message' => 'لا يمكن العثور على لجنة مرتبطة بهذه الفكرة.'], 400);
     }
-
-    $investor = $idea->committee
-        ->committeeMember()
-        ->where('role_in_committee', 'investor')
-        ->first();
-
+  $investor = $idea->committee
+    ->committeeMember
+    ->where('role_in_committee', 'investor')
+    ->first();
     if (!$investor) {
         return response()->json([
             'message' => 'لا يوجد مستثمر متاح ضمن اللجنة الحالية، سيتم مراجعة الطلب لاحقاً.',
         ], 400);
     }
-
     $meeting = $idea->meetings()->create([
-        'owner_id' => $ideaOwner->id,
-        'committee_id' => $idea->committee_id,
         'meeting_date' => now()->addDays(2),
         'meeting_link' => null,
         'notes' => 'مناقشة طلب التمويل للفكرة: ' . $idea->title,
         'requested_by' => 'owner',
         'type' => 'funding_request',
     ]);
-
     $funding = Funding::create([
         'idea_id' => $idea->id,
-        'idea_owner_id' => $ideaOwner->id,
-        'committee_id' => $idea->committee_id,
         'investor_id' => $investor->id,
-        'meeting_id' => $meeting->id,
         'requested_amount' => $request->requested_amount,
         'justification' => $request->justification,
         'status' => 'requested',
+        'meeting_id' => $meeting->id,
     ]);
-
     if ($idea->roadmap) {
         $stages = [
             "تقديم الفكرة",
@@ -107,10 +83,8 @@ if ($existingFunding && $existingFunding->status !== 'rejected') {
             "المتابعة بعد الإطلاق",
             "استقرار المشروع وانفصاله عن المنصة",
         ];
-
         $currentStageIndex = array_search("التمويل", $stages);
         $progressPercentage = (($currentStageIndex + 1) / count($stages)) * 100;
-
         $idea->roadmap->update([
             'current_stage' => 'التمويل',
             'stage_description' => 'تم إرسال طلب التمويل وهو الآن قيد المراجعة من قبل اللجنة.',
@@ -119,59 +93,47 @@ if ($existingFunding && $existingFunding->status !== 'rejected') {
             'next_step' => 'انتظار قرار اللجنة بخصوص التمويل',
         ]);
     }
-
     $idea->update(['roadmap_stage' => 'طلب التمويل قيد المراجعة']);
-
     return response()->json([
-        'message' => 'تم تقديم طلب التمويل بنجاح، وتم إنشاء الاجتماع والتقرير وسجل التقييم وتحديث خارطة الطريق.',
+        'message' => 'تم تقديم طلب التمويل بنجاح، وتم إنشاء الاجتماع وسجل التمويل وتحديث خارطة الطريق.',
         'funding' => $funding,
         'meeting' => $meeting,
     ], 201);
 }
 
 
-public function cancelFundingRequest(Request $request, $fundingId) // إلغاء طلب التمويل من قبل صاحب الفكرة 
+
+public function cancelFundingRequest(Request $request, $fundingId)//الغاء طلب التمويل من قبل صاحب الفكرة 
 {
     $user = $request->user();
-    $funding = Funding::with('idea', 'idea.ideaOwner', 'meeting')->find($fundingId);
+    $funding = Funding::with('idea', 'idea.owner')->find($fundingId); 
     if (!$funding) {
-        return response()->json([
-            'message' => 'طلب التمويل غير موجود.'
-        ], 404);
+        return response()->json(['message' => 'طلب التمويل غير موجود.'], 404);
     }
-
     $idea = $funding->idea;
-    $ideaOwner = $idea->ideaOwner;
-
-    if (!$ideaOwner || $ideaOwner->user_id !== $user->id) {
-        return response()->json([
-            'message' => 'ليس لديك صلاحية لإلغاء طلب التمويل لهذه الفكرة.'
-        ], 403);
+    $ideaOwner = $idea->owner;
+    if (!$ideaOwner || $ideaOwner->id !== $user->id) {
+        return response()->json(['message' => 'ليس لديك صلاحية لإلغاء طلب التمويل لهذه الفكرة.'], 403);
     }
-
     if (!in_array($funding->status, ['requested', 'under_review'])) {
-        return response()->json([
-            'message' => 'لا يمكن إلغاء هذا الطلب لأنه قيد المعالجة أو تم الانتهاء منه.'
-        ], 400);
+        return response()->json(['message' => 'لا يمكن إلغاء هذا الطلب لأنه قيد المعالجة أو تم الانتهاء منه.'], 400);
     }
-
     $request->validate([
         'cancellation_reason' => 'nullable|string|max:500',
     ]);
-
     $funding->update([
         'status' => 'cancelled',
         'committee_notes' => $request->cancellation_reason ?? 'تم الإلغاء من قبل صاحب الفكرة',
     ]);
 
-    if ($funding->meeting) {
-        $funding->meeting->update([
+    $meeting = $idea->meetings()->where('type', 'funding_request')->latest()->first();
+    if ($meeting) {
+        $meeting->update([
             'status' => 'cancelled',
             'meeting_date' => now(),
             'notes' => 'تم إلغاء طلب التمويل من قبل صاحب الفكرة.',
         ]);
     }
-
     if ($idea->roadmap) {
         $stages = [
             "تقديم الفكرة",
@@ -184,7 +146,6 @@ public function cancelFundingRequest(Request $request, $fundingId) // إلغاء
             "المتابعة بعد الإطلاق",
             "استقرار المشروع وانفصاله عن المنصة",
         ];
-
         $currentStageIndex = array_search("التمويل", $stages);
         $progressPercentage = (($currentStageIndex + 0.8) / count($stages)) * 100;
         $currentStage = $stages[$currentStageIndex];
@@ -198,12 +159,22 @@ public function cancelFundingRequest(Request $request, $fundingId) // إلغاء
         ]);
     }
 
-    $idea->update([
-        'roadmap_stage' => $idea->roadmap?->current_stage ?? null,
-    ]);
+    $idea->update(['roadmap_stage' => $idea->roadmap?->current_stage ?? null]);
+    $committeeMembers = CommitteeMember::where('committee_id', $idea->committee_id)
+        ->where('user_id', '!=', $user->id)
+        ->get();
 
+    foreach ($committeeMembers as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title' => 'تم إلغاء طلب التمويل',
+            'message' => 'قام صاحب الفكرة "' . $idea->title . '" بإلغاء طلب التمويل.',
+            'type' => 'funding_cancelled',
+            'is_read' => false,
+        ]);
+    }
     return response()->json([
-        'message' => 'تم إلغاء طلب التمويل بنجاح، وتم تحديث الاجتماع والتقرير وخارطة الطريق.',
+        'message' => 'تم إلغاء طلب التمويل بنجاح، وتم تحديث الاجتماع وخارطة الطريق وإشعار أعضاء اللجنة.',
         'funding' => $funding,
     ]);
 }
@@ -211,8 +182,7 @@ public function cancelFundingRequest(Request $request, $fundingId) // إلغاء
 
 
 
-
-public function getCommitteeFundRequests(Request $request)//عرض طلبات التمويل للجنة 
+public function getCommitteeFundRequests(Request $request) // عرض طلبات التمويل للجنة
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
@@ -222,100 +192,64 @@ public function getCommitteeFundRequests(Request $request)//عرض طلبات ا
             'message' => 'ليس لديك صلاحية الوصول إلى طلبات التمويل (أنت لست عضو لجنة).'
         ], 403);
     }
-
     $fundings = Funding::with([
             'idea',
-            'ideaOwner.user',
+            'idea.owner', 
             'gantt:id,phase_name',
             'task:id,task_name'
         ])
-        ->where('committee_id', $committeeMember->committee_id)
+        ->whereHas('idea', function ($query) use ($committeeMember) {
+            $query->where('committee_id', $committeeMember->committee_id);
+        })
         ->orderByDesc('created_at')
         ->get();
-
-    $fundings->transform(function ($funding) {
-        $funding->gantt_name = $funding->gantt?->phase_name;
-        $funding->task_name = $funding->task?->task_name;
-        return $funding;
-    });
-
     if ($fundings->isEmpty()) {
         return response()->json([
             'message' => 'لا توجد طلبات تمويل حالياً لهذه اللجنة.'
         ], 200);
     }
+    $fundings->transform(function ($funding) {
+        return [
+            'funding_id' => $funding->id,
+            'status' => $funding->status,
+            'requested_amount' => $funding->requested_amount,
+            'created_at' => $funding->created_at,
 
+            'idea' => [
+                'id' => $funding->idea->id,
+                'title' => $funding->idea->title,
+                'owner' => [
+                    'id' => $funding->idea->owner->id,
+                    'name' => $funding->idea->owner->name,
+                    'email' => $funding->idea->owner->email,
+                ],
+            ],
+
+            'gantt_name' => $funding->gantt?->phase_name,
+            'task_name' => $funding->task?->task_name,
+        ];
+    });
     return response()->json([
         'committee_id' => $committeeMember->committee_id,
         'funding_requests' => $fundings
     ], 200);
 }
 
-
-
-public function getUserFundings(Request $request)//عرض طلب التمويل الذي ارسله صاحب الفكرة
-{
-    $user = $request->user();
-    $ideaOwner = $user->ideaOwner;
-    if (!$ideaOwner) {
-        return response()->json([
-            'message' => 'أنت لا تمتلك أي أفكار مسجلة.'
-        ], 404);
-    }
-    $fundings = Funding::with([
-        'idea:id,title',                    
-        'committee:id,committee_name',      
-    'investor.user:id,name', 
-        'meeting:id,meeting_date,notes,meeting_link',
-    ])
-    ->where('idea_owner_id', $ideaOwner->id)
-    ->orderByDesc('created_at')
-    ->get();
-
-    if ($fundings->isEmpty()) {
-        return response()->json([
-            'message' => 'لا توجد طلبات تمويل مسجلة.'
-        ], 200);
-    }
-
-    $data = $fundings->map(function($funding) {
-        return [
-            'funding_id' => $funding->id,
-            'requested_amount' => $funding->requested_amount,
-            'justification' => $funding->justification,
-            'status' => $funding->status,
-
-            'idea' => $funding->idea->title ?? null,
-            'committee' => $funding->committee->committee_name ?? null,
-            'investor' => $funding->investor->user->name ?? 'لم يحدد بعد',
-            'meeting' => [
-                'meeting_date' => $funding->meeting->meeting_date ?? null,
-                'notes' => $funding->meeting->notes ?? null,
-                   'meeting_link' => $funding->meeting->meeting_link 
-                          ?? 'سيتم تحديد رابط الاجتماع لاحقاً من قبل اللجنة',
-            ],
-         
-            'created_at' => $funding->created_at,
-            'updated_at' => $funding->updated_at,
-        ];
-    });
-
-    return response()->json([
-        'message' => 'قائمة طلبات التمويل الخاصة بك.',
-        'fundings' => $data,
-    ], 200);
-}
-
-
-
 public function evaluateFunding(Request $request, Funding $funding)
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
-    if (!$committeeMember || $committeeMember->committee_id != $funding->committee_id) {
+    if (
+        !$committeeMember ||
+        $committeeMember->committee_id != $funding->idea->committee_id
+    ) {
         return response()->json(['message' => 'ليس لديك صلاحية تقييم هذا الطلب.'], 403);
     }
-    $meeting = $funding->meeting;
+    $meeting = $funding->idea
+        ->meetings()
+        ->where('type', 'funding_request')
+        ->latest('meeting_date')
+        ->first();
     if (!$meeting || $meeting->meeting_date > now()) {
         return response()->json([
             'message' => 'لا يمكن تقييم التمويل قبل وجود الاجتماع أو قبل موعده.',
@@ -327,39 +261,32 @@ public function evaluateFunding(Request $request, Funding $funding)
         'approved_amount' => 'nullable|numeric|min:0',
         'committee_notes' => 'nullable|string',
     ]);
-
     DB::beginTransaction();
-
-    try {        $funding->update([
-            'is_approved'    => $validated['is_approved'],
-            'approved_amount'=> $validated['approved_amount'] ?? $funding->requested_amount,
-            'committee_notes'=> $validated['committee_notes'] ?? '',
-            'status'         => $validated['is_approved'] ? 'approved' : 'rejected',
+    try {
+        $funding->update([
+            'is_approved'     => $validated['is_approved'],
+            'approved_amount' => $validated['approved_amount'] ?? $funding->requested_amount,
+            'committee_notes' => $validated['committee_notes'] ?? '',
+            'status'          => $validated['is_approved'] ? 'approved' : 'rejected',
         ]);
 
         $idea = $funding->idea;
         if ($validated['is_approved']) {
-
             $investorUser = $funding->investor?->user;
-            $ownerUser    = $funding->ideaOwner?->user;
-
+            $ownerUser    = $idea->owner;
             $investorWallet = Wallet::where('user_id', $investorUser?->id)->first();
             $ownerWallet    = Wallet::where('user_id', $ownerUser?->id)->first();
-
             if (!$investorWallet || !$ownerWallet) {
                 DB::rollBack();
                 return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
             }
-
             $amount = $funding->approved_amount;
-
             if ($investorWallet->balance < $amount) {
                 DB::rollBack();
                 return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'], 400);
             }
             $investorWallet->decrement('balance', $amount);
             $ownerWallet->increment('balance', $amount);
-
             WalletTransaction::create([
                 'wallet_id'        => $ownerWallet->id,
                 'funding_id'       => $funding->id,
@@ -374,9 +301,9 @@ public function evaluateFunding(Request $request, Funding $funding)
                 'notes'            => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
             ]);
             $funding->update([
-                'transfer_date'         => now(),
-                'transaction_reference'  => 'TX-' . uniqid(),
-                'payment_method'         => 'wallet',
+                'transfer_date'        => now(),
+                'transaction_reference'=> 'TX-' . uniqid(),
+                'payment_method'       => 'wallet',
             ]);
         }
         $roadmapStages = [
@@ -390,6 +317,7 @@ public function evaluateFunding(Request $request, Funding $funding)
             "المتابعة بعد الإطلاق",
             "استقرار المشروع وانفصاله عن المنصة",
         ];
+
         $currentStageIndex = array_search("التمويل", $roadmapStages);
         if ($validated['is_approved']) {
             $stageDescription = "تمت الموافقة على التمويل والمبلغ المحدد: " . $funding->approved_amount;
@@ -400,32 +328,30 @@ public function evaluateFunding(Request $request, Funding $funding)
             $nextStep = "إعادة تقديم طلب التمويل";
             $progressPercentage = (($currentStageIndex + 0.2) / count($roadmapStages)) * 100;
         }
-
-        $roadmap = $idea->roadmap;
-        if ($roadmap) {
-            $roadmap->update([
-                'current_stage'        => "التمويل",
-                'stage_description'    => $stageDescription,
-                'progress_percentage'  => $progressPercentage,
-                'last_update'          => now(),
-                'next_step'            => $nextStep,
+        if ($idea->roadmap) {
+            $idea->roadmap->update([
+                'current_stage'       => "التمويل",
+                'stage_description'   => $stageDescription,
+                'progress_percentage' => $progressPercentage,
+                'last_update'         => now(),
+                'next_step'           => $nextStep,
             ]);
         }
         $idea->update(['roadmap_stage' => "التمويل"]);
         Notification::create([
-            'user_id' => $idea->ideaowner?->user_id,
+            'user_id' => $idea->owner?->id,
             'title'   => 'تقييم طلب التمويل',
-            'message' => 'تم تقييم طلب التمويل لفكرتك "' . $idea->title . '". الحالة: ' . ($validated['is_approved'] ? 'مقبول' : 'مرفوض') . '.',
+            'message' => 'تم تقييم طلب التمويل لفكرتك "' . $idea->title . '". الحالة: ' .
+                ($validated['is_approved'] ? 'مقبول' : 'مرفوض'),
             'type'    => 'funding_evaluation',
             'is_read' => false,
         ]);
         DB::commit();
         return response()->json([
-            'message'  => 'تم تقييم طلب التمويل وتحديث الحالة والخارطة وتحويل المبلغ تلقائيًا إذا تمت الموافقة.',
-            'funding'  => $funding,
-            'roadmap'  => $roadmap,
+            'message' => 'تم تقييم طلب التمويل وتحديث الحالة والخارطة وتحويل المبلغ تلقائيًا إذا تمت الموافقة.',
+            'funding' => $funding,
+            'roadmap' => $idea->roadmap,
         ]);
-
     } catch (\Exception $e) {
         DB::rollBack();
         return response()->json([
@@ -435,27 +361,23 @@ public function evaluateFunding(Request $request, Funding $funding)
     }
 }
 
-public function showFundingForIdea(Request $request, $idea_id)//عرض طلبات التمويل التي كتبها صاحب الفكرة لصاحب الفكرة
+public function showFundingForIdea(Request $request, $idea_id)
 {
     $user = $request->user(); 
     $idea = Idea::where('id', $idea_id)
-        ->whereHas('ideaOwner', function($q) use ($user) {
-            $q->where('user_id', $user->id);
+        ->whereHas('owner', function ($q) use ($user) {
+            $q->where('id', $user->id);
         })
         ->first();
-
     if (!$idea) {
         return response()->json([
             'message' => 'هذه الفكرة غير موجودة أو لا تنتمي لك.',
         ], 404);
     }
-
     $fundings = Funding::with([
-        'idea:id,title,description,initial_evaluation_score',
-        'ideaOwner.user:id,name,email',
-        'committee:id,committee_name',
+        'idea:id,title,description,initial_evaluation_score,committee_id',
+        'idea.committee:id,committee_name',
         'investor.user:id,name,email',
-        'meeting:id,meeting_date,notes',
         'walletTransactions.sender:id,name,email',
         'walletTransactions.receiver:id,name,email',
     ])
@@ -469,6 +391,12 @@ public function showFundingForIdea(Request $request, $idea_id)//عرض طلبا�
     }
 
     $response = $fundings->map(function ($funding) {
+        $meeting = $funding->idea
+            ->meetings()
+            ->where('type', 'funding_request')
+            ->latest('meeting_date')
+            ->first();
+
         return [
             'funding_id' => $funding->id,
             'status' => $funding->status,
@@ -487,8 +415,8 @@ public function showFundingForIdea(Request $request, $idea_id)//عرض طلبا�
             ],
 
             'committee' => [
-                'id' => $funding->committee->id ?? null,
-                'name' => $funding->committee->committee_name ?? null,
+                'id' => $funding->idea->committee->id ?? null,
+                'name' => $funding->idea->committee->committee_name ?? null,
             ],
 
             'investor' => [
@@ -498,9 +426,9 @@ public function showFundingForIdea(Request $request, $idea_id)//عرض طلبا�
             ],
 
             'meeting' => [
-                'id' => $funding->meeting->id ?? null,
-                'meeting_date' => $funding->meeting->meeting_date ?? null,
-                'notes' => $funding->meeting->notes ?? 'رابط الاجتماع سيُحدد لاحقًا من قبل اللجنة',
+                'id' => $meeting?->id,
+                'meeting_date' => $meeting?->meeting_date,
+                'notes' => $meeting?->notes ?? 'رابط الاجتماع سيُحدد لاحقًا من قبل اللجنة',
             ],
 
             'wallet_transactions' => $funding->walletTransactions->map(function ($tx) {
@@ -535,8 +463,7 @@ public function showFundingForIdea(Request $request, $idea_id)//عرض طلبا�
 }
 
 
-
-    public function showCommitteeFundingChecks(Request $request)//عرض الشيك للجنة
+  public function showCommitteeFundingChecks(Request $request)
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
@@ -544,20 +471,19 @@ public function showFundingForIdea(Request $request, $idea_id)//عرض طلبا�
     if (!$committeeMember) {
         return response()->json(['message' => 'أنت غير مرتبط بأي لجنة.'], 403);
     }
-
     $fundings = Funding::with([
-        'idea:id,title,description',
-        'ideaOwner.user:id,name,email',
-        'committee:id,committee_name',
+'idea:id,title,description,committee_id,owner_id',
+        'idea.owner:id,name,email',
+        'idea.committee:id,committee_name',
         'investor.user:id,name,email',
         'walletTransactions.sender:id,name,email',
         'walletTransactions.receiver:id,name,email',
     ])
-    ->where('committee_id', $committeeMember->committee_id)
+    ->whereHas('idea', function ($q) use ($committeeMember) {
+        $q->where('committee_id', $committeeMember->committee_id);
+    })
     ->get();
-
     $checks = [];
-
     foreach ($fundings as $funding) {
         foreach ($funding->walletTransactions as $tx) {
             $checks[] = [
@@ -571,7 +497,7 @@ public function showFundingForIdea(Request $request, $idea_id)//عرض طلبا�
                 'funding_id' => $funding->id,
                 'idea_title' => $funding->idea->title ?? '',
                 'investor' => $funding->investor->user->name ?? '',
-                'idea_owner' => $funding->ideaOwner->user->name ?? '',
+                'idea_owner' => $funding->idea->owner->name ?? '',
             ];
         }
     }

@@ -17,9 +17,7 @@ public function showProfile(Request $request)//عرض البروفايل لصا�
     if (!$user || $user->role !== 'idea_owner') {
         return response()->json(['message' => 'هذه البيانات متاحة لأصحاب الأفكار فقط.'], 403);
     }
-
-    $ideaOwner = $user->ideaowner;
-    $idea = $ideaOwner ? $ideaOwner->ideas()->latest()->first() : null;
+    $idea = $user->ideas()->latest()->first();
 
     $data = [
         'user_id'       => $user->id,
@@ -69,11 +67,8 @@ public function showCommitteeMemberProfile(Request $request)
 public function updateProfile(Request $request)
 {
     $user = $request->user(); 
-
-    // تحديث الحقول مباشرة من جدول users
     $user->phone = $request->phone ?? $user->phone;
     $user->bio = $request->bio ?? $user->bio;
-
     if ($request->hasFile('profile_image')) {
         $image = $request->file('profile_image');
         $filename = time() . '_' . $image->getClientOriginalName();
