@@ -70,5 +70,9 @@ public function ideas()
         return $this->hasMany(PostLaunchFollowUp::class, 'recorded_by');
     }
 
+       public function reviewedFollowUps()
+    {
+        return $this->hasMany(PostLaunchFollowUp::class, 'reviewed_by');
+    }
 
 }

@@ -14,76 +14,83 @@ use Illuminate\Http\Request;
 
 class LaunchProjectController extends Controller
 {
-  
 public function markReadyForLaunch(Request $request, Idea $idea)
 {
     $user = $request->user();
-    if ($idea->ideaowner->user_id !== $user->id) {
+    if ($idea->owner_id !== $user->id) {
         return response()->json([
-            'message' => 'ليس لديك صلاحية لإبلاغ اللجنة بأن المشروع جاهز للإطلاق.'
+            'message' => 'ليس لديك صلاحية طلب إطلاق هذا المشروع.'
         ], 403);
     }
-    $badPhasesCount = $idea->ganttCharts->where('failure_count', 1)->count();
-    if ($badPhasesCount >= 3) {
+    $failedPhasesCount = $idea->ganttCharts()
+        ->where('failure_count', '>=', 1)
+        ->count();
+    if ($failedPhasesCount >= 3) {
         return response()->json([
-            'message' => "لا يمكنك الإبلاغ عن جاهزية الإطلاق لأن المشروع يحتوي على {$badPhasesCount} مراحل سيئة."
+            'message' => "لا يمكن طلب الإطلاق لأن المشروع يحتوي على {$failedPhasesCount} مراحل فاشلة."
         ], 422);
     }
-    $incompletePhases = $idea->ganttCharts->where('progress', '<', 100)->count();
+    $incompletePhases = $idea->ganttCharts()
+        ->where('progress', '<', 100)
+        ->count();
+
     if ($incompletePhases > 0) {
         return response()->json([
-            'message' => "لا يمكنك الإبلاغ عن جاهزية الإطلاق لأن هناك {$incompletePhases} مرحلة لم تكتمل بنسبة 100%."
+            'message' => "لا يمكن طلب الإطلاق، يوجد {$incompletePhases} مراحل غير مكتملة."
         ], 422);
     }
-    $existingLaunch = LaunchProject::where('idea_id', $idea->id)->first();
-    if ($existingLaunch) {
-        if ($existingLaunch->status === 'pending') {
-            return response()->json([
-                'message' => 'لقد تم بالفعل إرسال طلب جاهزية الإطلاق وهو قيد الانتظار.'
-            ], 400);
-        } elseif ($existingLaunch->status === 'approved') {
-            return response()->json([
-                'message' => 'تمت الموافقة على إطلاق المشروع مسبقًا. المشروع مُطلق بالفعل.'
-            ], 400);
-        }
+    $unevaluatedPhases = $idea->ganttCharts()
+        ->whereNull('evaluation_score')
+        ->count();
+    if ($unevaluatedPhases > 0) {
+        return response()->json([
+            'message' => "لا يمكن طلب الإطلاق، يوجد {$unevaluatedPhases} مراحل غير مُقيّمة من اللجنة."
+        ], 422);
     }
+    $pendingLaunch = LaunchProject::where('idea_id', $idea->id)
+        ->where('status', 'pending')
+        ->first();
+    if ($pendingLaunch) {
+        return response()->json([
+            'message' => 'يوجد طلب إطلاق قيد المراجعة حالياً.'
+        ], 400);
+    }
+    $newVersion = LaunchProject::where('idea_id', $idea->id)
+        ->max('launch_version');
 
+    $newVersion = ($newVersion ?? 0) + 1;
     $launch = LaunchProject::create([
-        'idea_id' => $idea->id,
-        'status' => 'pending',
+        'idea_id'         => $idea->id,
+        'launch_version'  => $newVersion,
+        'status'          => 'pending',
         'followup_status' => 'pending',
-        'launch_date' => null,
-        ]);
-    $meeting = $idea->meetings()->create([
- 'owner_id' => $idea->ideaowner->id,
-         'committee_id' => $idea->committee_id,
-        'meeting_date' => now()->addDays(2),
-        'meeting_link' => null,
-        'notes' => "مناقشة طلب إطلاق المشروع '{$idea->title}'",
-        'requested_by' => 'owner',
-        'type' => 'launch_request',
+        'launch_date'     => null,
     ]);
- $committeeMembers = $idea->committee?->committeeMember ?? collect();
-foreach ($committeeMembers as $member) {
-    if($member->user_id) {
+    $meeting = $idea->meetings()->create([
+        'meeting_date' => now()->addDays(2),
+        'notes'        => "مناقشة طلب إطلاق الإصدار {$newVersion} للمشروع '{$idea->title}'",
+        'requested_by' => 'owner',
+        'type'         => 'launch_request',
+    ]);
+    $committeeMembers = $idea->committee?->committeeMember ?? collect();
+    foreach ($committeeMembers as $member) {
         Notification::create([
             'user_id' => $member->user_id,
-            'title' => 'طلب جاهزية الإطلاق',
-            'message' => "أبلغ صاحب المشروع '{$idea->title}' أن مشروعه جاهز للإطلاق. تم إنشاء اجتماع لمناقشته بتاريخ {$meeting->meeting_date}.",
-            'type' => 'info',
+            'title'   => 'طلب إطلاق مشروع',
+            'message' => "تم تقديم طلب إطلاق الإصدار {$newVersion} لمشروع '{$idea->title}'.",
+            'type'    => 'launch_request',
             'is_read' => false,
         ]);
     }
-}
-
     return response()->json([
-        'message' => 'تم إرسال طلب جاهزية الإطلاق إلى اللجنة بنجاح، وتم إنشاء اجتماع لمناقشة الإطلاق.',
-        'launch' => $launch,
-        'meeting' => $meeting
+        'message' => "تم إرسال طلب إطلاق الإصدار {$newVersion} بنجاح.",
+        'launch'  => $launch,
+        'meeting' => $meeting,
     ], 200);
 }
 
-public function committeeLaunchRequests(Request $request)//عرض طلبات الاطلاق للجنة 
+
+public function committeeLaunchRequests(Request $request)//جلب طلبات الاطلاق للجنة 
 {
     $user = $request->user();
     if (!$user->committeeMember) {
@@ -91,27 +98,23 @@ public function committeeLaunchRequests(Request $request)//عرض طلبات ا�
             'message' => 'يجب أن تكون عضو لجنة لعرض طلبات الإطلاق.'
         ], 403);
     }
+
     $committeeId = $user->committeeMember->committee_id;
     $launchRequests = LaunchProject::with([
-        'idea:id,title,committee_id'
-    ])
-    ->whereHas('idea', function ($query) use ($committeeId) {
-        $query->where('committee_id', $committeeId);
-    })
-    ->orderBy('created_at', 'desc')
-    ->get();
-
+            'idea:id,title,committee_id,owner_id,status'
+        ])
+        ->whereHas('idea', function ($query) use ($committeeId) {
+            $query->where('committee_id', $committeeId);
+        })
+        ->orderByDesc('created_at')
+        ->get();
     return response()->json([
         'message' => 'طلبات جاهزية الإطلاق الخاصة بلجنتك.',
-        'data' => $launchRequests
+        'data'    => $launchRequests
     ], 200);
 }
 
-
-
-
-
-public function committeeDecision(Request $request, LaunchProject $launch)//قرار اللجنة بشان الاطلاق
+public function committeeDecision(Request $request, LaunchProject $launch) //قرار اللجنة بشان الاطلاق
 {
     $user = $request->user();
     if (!$user->committeeMember || $user->committeeMember->committee_id != $launch->idea->committee_id) {
@@ -124,12 +127,11 @@ public function committeeDecision(Request $request, LaunchProject $launch)//قر
         'notes' => 'nullable|string',
     ]);
 
-    $idea = $launch->idea;
+    $idea = $launch->idea()->first();
     $meeting = $idea->meetings()
         ->where('type', 'launch_request')
         ->latest()
         ->first();
-
     if (!$meeting) {
         return response()->json([
             'message' => 'لا يوجد اجتماع خاص بطلب الإطلاق بعد.'
@@ -142,12 +144,11 @@ public function committeeDecision(Request $request, LaunchProject $launch)//قر
     }
     $launchDate = now()->addHours(24);
     $launch->status = $request->decision;
-
-   if ($request->decision === 'approved') {
-    $launch->launch_date = $launchDate;
-    $launch->status = 'launched'; 
-      $launch->followup_status = 'ongoing';
-}
+    if ($request->decision === 'approved') {
+        $launch->launch_date = $launchDate;
+        $launch->status = 'launched'; 
+        $launch->followup_status = 'ongoing';
+    }
     $launch->save();
     $report = Report::create([
         'idea_id' => $idea->id,
@@ -163,27 +164,16 @@ public function committeeDecision(Request $request, LaunchProject $launch)//قر
         'strengths' => null,
         'weaknesses' => null,
     ]);
-    $ownerUserId = $idea->ideaowner->user_id;
-    if ($request->decision === 'approved') {
-        Notification::create([
-            'user_id' => $ownerUserId,
-            'title' => 'موافقة على إطلاق مشروعك',
-            'message' =>
-                "تهانينا! تمت الموافقة على إطلاق مشروع '{$idea->title}'. سيتم الإطلاق خلال 24 ساعة بتاريخ: {$launchDate}. 
-                المنصة ستتابعك بعد الإطلاق لضمان استقرار مشروعك.",
-            'type' => 'success',
-            'is_read' => false,
-        ]);
-    } else {
-        Notification::create([
-            'user_id' => $ownerUserId,
-            'title' => 'تم رفض طلب إطلاق مشروعك',
-            'message' =>
-                "نأسف، تم رفض طلب إطلاق مشروع '{$idea->title}'. ملاحظات اللجنة: {$request->notes}",
-            'type' => 'warning',
-            'is_read' => false,
-        ]);
-    }
+    $ownerUserId = $idea->owner->id;
+    Notification::create([
+        'user_id' => $ownerUserId,
+        'title' => $request->decision === 'approved' ? 'موافقة على إطلاق مشروعك' : 'تم رفض طلب إطلاق مشروعك',
+        'message' => $request->decision === 'approved' 
+            ? "تهانينا! تمت الموافقة على إطلاق مشروع '{$idea->title}'. سيتم الإطلاق خلال 24 ساعة بتاريخ: {$launchDate}. المنصة ستتابعك بعد الإطلاق لضمان استقرار مشروعك."
+            : "نأسف، تم رفض طلب إطلاق مشروع '{$idea->title}'. ملاحظات اللجنة: {$request->notes}",
+        'type' => $request->decision === 'approved' ? 'success' : 'warning',
+        'is_read' => false,
+    ]);
     $roadmapStages = [
         "تقديم الفكرة",
         "التقييم الأولي",
@@ -202,7 +192,7 @@ public function committeeDecision(Request $request, LaunchProject $launch)//قر
     $idea->roadmap_stage = $currentStage;
     $idea->save();
 
-    $roadmap = $idea->roadmap;
+    $roadmap = $idea->roadmap()->first();
     if ($roadmap) {
         $roadmap->update([
             'current_stage' => $currentStage,
@@ -212,29 +202,24 @@ public function committeeDecision(Request $request, LaunchProject $launch)//قر
             'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
         ]);
     }
-if ($request->decision === 'approved') {
-    $existingFollowup = $launch->followUps()->first();
-    if (!$existingFollowup) {
-        $launch->followUps()->create([
-            'challenge_detected' => false,
-            'challenge_level' => null,           
-            'challenge_description' => null,
-            'action_taken' => null,
-            'recorded_by' => $user->id,
-            'kpi_active_users' => 0,
-            'kpi_sales' => 0,
-            'kpi_user_growth' => 0,
-            'kpi_engagement' => 0,
-            'overall_status' => 'stable',        
-            'ready_to_separate' => false,
-            'recommended_separation_date' => null,
-            'actual_separation_date' => null,
-            'review_status' => 'in_review', 
-            'decision_notes' => null,
-        ]);
-    }
-}
+    if ($request->decision === 'approved') {
+        $existingFollowup = $launch->followUps()->first();
 
+        if (!$existingFollowup) {
+            $launch->followUps()->create([
+                'launch_project_id' => $launch->id,
+                'idea_id' => $idea->id,
+                'checkpoint' => 'week_1',
+                'issue_type' => 'none',
+                'issue_description' => null,
+                'platform_action' => null,
+                'status' => 'pending',
+                'requires_reexecution' => false,
+                'committee_recommendation' => null,
+                'reviewed_by' => $user->id,
+            ]);
+        }
+    }
     return response()->json([
         'message' => 'تم تسجيل قرار اللجنة بنجاح.',
         'launch' => $launch,
@@ -242,11 +227,12 @@ if ($request->decision === 'approved') {
     ]);
 }
 
+
 //عرض نتيجة طلب الاطلاق لصاحب الفكرة 
 public function launchResult(Request $request, Idea $idea)
 {
     $user = $request->user();
-    if ($idea->ideaowner->user_id !== $user->id) {
+    if ($idea->owner_id !== $user->id) {
         return response()->json([
             'message' => 'ليس لديك صلاحية لعرض نتيجة طلب الإطلاق لهذا المشروع.'
         ], 403);
@@ -260,11 +246,10 @@ public function launchResult(Request $request, Idea $idea)
             'message' => 'لا يوجد طلب إطلاق تم تقديمه لهذه الفكرة بعد.'
         ], 404);
     }
-    $report = $launch->idea->reports()
+    $report = $idea->reports()
         ->where('report_type', 'launch')
         ->latest()
         ->first();
-
     return response()->json([
         'message' => 'نتيجة طلب إطلاق المشروع.',
         'data' => [

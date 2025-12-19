@@ -8,11 +8,14 @@ use Illuminate\Database\Eloquent\Model;
 class LaunchProject extends Model
 {
     use HasFactory;
-    protected $fillable = [
+  protected $fillable = [
         'idea_id',
         'status',
         'launch_date',
-        'followup_status'
+        'launch_version',
+        'followup_status',
+        'profit_allowed',
+        'stabilized_at',
     ];
     public function idea()
     {

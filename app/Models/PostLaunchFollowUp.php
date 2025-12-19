@@ -10,23 +10,17 @@ class PostLaunchFollowUp extends Model
     protected $table = 'post_launch_followups';
     use HasFactory;
 
-    protected $fillable = [
+   protected $fillable = [
         'launch_project_id',
-        'recorded_by',
-        'challenge_detected',
-        'challenge_level',
-        'challenge_description',
-        'action_taken',
-        'kpi_active_users',
-        'kpi_sales',
-        'kpi_user_growth',
-        'kpi_engagement',
-        'overall_status',
-        'ready_to_separate',
-        'recommended_separation_date',
-        'actual_separation_date',
-        'review_status',
-        'decision_notes',
+        'idea_id',
+        'checkpoint',
+        'issue_type',
+        'issue_description',
+        'platform_action',
+        'status',
+        'requires_reexecution',
+        'committee_recommendation',
+        'reviewed_by',
     ];
 
 
@@ -34,8 +28,13 @@ class PostLaunchFollowUp extends Model
     {
         return $this->belongsTo(LaunchProject::class, 'launch_project_id');
     }
-    public function recorder()
+     public function idea()
     {
-        return $this->belongsTo(User::class, 'recorded_by');
+        return $this->belongsTo(Idea::class);
+    }
+
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 }
