@@ -202,24 +202,6 @@ public function committeeDecision(Request $request, LaunchProject $launch) //ق�
             'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
         ]);
     }
-    if ($request->decision === 'approved') {
-        $existingFollowup = $launch->followUps()->first();
-
-        if (!$existingFollowup) {
-            $launch->followUps()->create([
-                'launch_project_id' => $launch->id,
-                'idea_id' => $idea->id,
-                'checkpoint' => 'week_1',
-                'issue_type' => 'none',
-                'issue_description' => null,
-                'platform_action' => null,
-                'status' => 'pending',
-                'requires_reexecution' => false,
-                'committee_recommendation' => null,
-                'reviewed_by' => $user->id,
-            ]);
-        }
-    }
     return response()->json([
         'message' => 'تم تسجيل قرار اللجنة بنجاح.',
         'launch' => $launch,

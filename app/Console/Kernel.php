@@ -10,10 +10,13 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      */
+
+
     protected function schedule(Schedule $schedule): void
     {
     $schedule->command('notify:upcoming-meetings')->everyMinute()->withoutOverlapping();
-        $schedule->command('penalty:check-deadlines')->everyMinute()->withoutOverlapping();
+$schedule->command('followups:generate-with-meetings')->everyMinute()->withoutOverlapping();
+
 
     }
 

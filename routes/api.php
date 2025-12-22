@@ -9,6 +9,7 @@ use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\LaunchProjectController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PostLaunchFollowupController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProfileController;
