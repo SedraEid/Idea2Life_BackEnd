@@ -41,7 +41,10 @@ Route::middleware('auth:sanctum')->group(function () {//اضافة فكرة
 });
 Route::middleware('auth:sanctum')->put('/ideas/{idea}', [IdeaController::class, 'update']);//تعديل الفكرة من قبل صاحبها بعد التقييم الضعيف
 Route::middleware('auth:sanctum')->post('/ideas/{idea}/evaluate', [ReportController::class, 'evaluate']);//تقييم الفكرة من قبل اللجنة
-Route::middleware('auth:sanctum')->get('/committee/ideas', [IdeaController::class, 'committee_Ideas']);//عرض كل الافكار التي تشرف عليها اللجنة
+Route::middleware('auth:sanctum')->get(//عرض كل الافكار التي تشرف عليها اللجنة مع التفاصييلللللل
+    '/committee/ideas-full-clean',
+    [IdeaController::class, 'committeeIdeasFullDetailsClean']
+);
 Route::middleware('auth:sanctum')->get('/my-committee', [IdeaController::class, 'getUserIdeasWithCommittee']);//عرض اللجان او اللجنة التي تشرف على فكرة صاحب الفكرة 
 
 Route::middleware('auth:sanctum')->group(function () {//ملئ مخطط ال bmc

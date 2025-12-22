@@ -148,21 +148,36 @@ if ($idea->status === 'rejected') {
     ]);
 }
 
-public function committee_Ideas(Request $request)//بيرجع الافكار يلي بتاشرف عليها اللجنة 
+public function committeeIdeasFullDetailsClean(Request $request)
 {
     $user = $request->user();
+
     if (!$user->committeeMember) {
-        return response()->json(['message' => 'ليس لديك صلاحية الوصول.'], 403);
+        return response()->json([
+            'message' => 'ليس لديك صلاحية'
+        ], 403);
     }
+
     $committeeId = $user->committeeMember->committee_id;
+
     $ideas = Idea::where('committee_id', $committeeId)
-                 ->with(['committee.committeeMember.user', 'owner'])
-                 ->get();
+        ->with([
+            'owner:id,name,email',
+            'roadmap',
+            'businessPlan',
+            'tasks',
+            'ganttCharts',
+            'launchProjects',
+            'postLaunchFollowUps'
+        ])
+        ->get();
+
     return response()->json([
         'committee_id' => $committeeId,
         'ideas' => $ideas
     ]);
 }
+
 
 public function getUserIdeasWithCommittee(Request $request)//يعرض اللجنة و الاعضاء التي تشرف على فكرة لصاحب الفكرة
 {
