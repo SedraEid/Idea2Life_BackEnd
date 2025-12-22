@@ -34,7 +34,7 @@ class AuthController extends Controller
 
     $wallet = Wallet::create([
         'user_id'   => $user->id,
-        'user_type' => 'idea_owners',
+        'user_type' => 'idea_owner',
         'balance'   => 0,        
         'status'    => 'active', 
     ]);
