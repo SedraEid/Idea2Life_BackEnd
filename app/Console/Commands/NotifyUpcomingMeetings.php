@@ -11,89 +11,87 @@ use Illuminate\Support\Facades\Log;
 class NotifyUpcomingMeetings extends Command
 {
     protected $signature = 'notify:upcoming-meetings';
-    protected $description = 'إرسال إشعار للمستخدمين عند اقتراب موعد اجتماعهم (للجنة وصاحب الفكرة)';
+    protected $description = 'إرسال إشعار للمستخدمين عند اقتراب موعد اجتماعهم';
 
     public function handle()
     {
         $now = Carbon::now();
+
         $reminders = [
             1440 => 'قبل 24 ساعة',
             60   => 'قبل ساعة',
             30   => 'قبل نصف ساعة',
             1    => 'قبل دقيقة',
         ];
-        $window = 5;
 
         Log::info("بدء فحص الاجتماعات عند {$now}");
-
         foreach ($reminders as $minutesBefore => $label) {
-            $from = $now->copy()->addMinutes($minutesBefore - $window);
-            $to   = $now->copy()->addMinutes($minutesBefore + $window);
             $meetings = Meeting::with(['idea.owner', 'idea.committee.committeeMember.user'])
-                ->whereBetween('meeting_date', [$from, $to])
+                ->where('meeting_date', '>', $now)
+                ->where('meeting_date', '<=', $now->copy()->addMinutes($minutesBefore))
                 ->get();
-
-            Log::info("تم العثور على {$meetings->count()} اجتماع(ات) ضمن فترة {$label} (من {$from} إلى {$to})");
+            Log::info("تم العثور على {$meetings->count()} اجتماع(ات) لتذكير {$label}");
 
             foreach ($meetings as $meeting) {
-                $idea = $meeting->idea;
-                if (!$idea || !$idea->owner) {
-                    Log::warning(" الاجتماع {$meeting->id} لا يحتوي على فكرة أو صاحب فكرة — تم تخطيه.");
+
+                if (!$meeting->idea || !$meeting->idea->owner) {
+                    Log::warning("الاجتماع {$meeting->id} بدون فكرة أو صاحب فكرة");
                     continue;
                 }
-                $ownerUserId = $idea->owner->id;
-                $typeOwner = "meeting_reminder_owner_{$minutesBefore}m";
-                $alreadyNotifiedOwner = Notification::where('meeting_id', $meeting->id)
-                    ->where('user_id', $ownerUserId)
+                $ownerId = $meeting->idea->owner->id;
+
+                $typeOwner = "meeting_reminder_owner_{$meeting->id}_{$minutesBefore}";
+                $alreadyOwner = Notification::where('user_id', $ownerId)
                     ->where('type', $typeOwner)
                     ->exists();
-                if (!$alreadyNotifiedOwner) {
+
+                if (!$alreadyOwner) {
                     Notification::create([
-                        'user_id'    => $ownerUserId,
-                        'title'      => "تذكير باقتراب موعد اجتماعك {$label}",
-                        'message'    => "لديك اجتماع بعنوان '{$meeting->type}' سيبدأ في {$meeting->meeting_date->format('Y-m-d H:i')}",
-                        'type'       => $typeOwner,
-                        'is_read'    => false,
-                        'meeting_id' => $meeting->id,
+                        'user_id' => $ownerId,
+                        'title'   => "تذكير اجتماع {$label}",
+'message' => 
+    "سبب الاجتماع: " . ($meeting->notes ?? '—') .
+    "\nموعد الاجتماع: " . $meeting->meeting_date->format('Y-m-d H:i'),
+                        'type'    => $typeOwner,
+                        'is_read' => false,
                     ]);
 
-                    Log::info(" إشعار جديد لصاحب الفكرة (User {$ownerUserId}) للاجتماع {$meeting->id}.");
-                } else {
-                    Log::info(" إشعار مكرر لصاحب الفكرة (User {$ownerUserId}) — تم تخطيه.");
+                    Log::info("إشعار لصاحب الفكرة {$ownerId} للاجتماع {$meeting->id}");
                 }
-                if ($idea->committee) {
-                    foreach ($idea->committee->committeeMember as $member) {
-                        $committeeUserId = $member->user->id ?? null;
-                        if (!$committeeUserId) continue;
+                if ($meeting->idea->committee) {
+                    foreach ($meeting->idea->committee->committeeMember as $member) {
 
-                        $typeCommittee = "meeting_reminder_committee_{$minutesBefore}m";
+                        if (!$member->user) continue;
 
-                        $alreadyNotifiedCommittee = Notification::where('meeting_id', $meeting->id)
-                            ->where('user_id', $committeeUserId)
+                        $committeeUserId = $member->user->id;
+
+                        $typeCommittee = "meeting_reminder_committee_{$meeting->id}_{$minutesBefore}";
+
+                        $alreadyCommittee = Notification::where('user_id', $committeeUserId)
                             ->where('type', $typeCommittee)
                             ->exists();
 
-                        if (!$alreadyNotifiedCommittee) {
+                        if (!$alreadyCommittee) {
                             Notification::create([
-                                'user_id'    => $committeeUserId,
-                                'title'      => "تذكير باقتراب اجتماع الفكرة '{$idea->title}' {$label}",
-                                'message'    => "هناك اجتماع للفكرة '{$idea->title}' سيبدأ في {$meeting->meeting_date->format('Y-m-d H:i')}",
-                                'type'       => $typeCommittee,
-                                'is_read'    => false,
-                                'meeting_id' => $meeting->id,
+                                'user_id' => $committeeUserId,
+                                'title'   => "تذكير اجتماع فكرة '{$meeting->idea->title}'",
+'message' => 
+    "سبب الاجتماع: " . ($meeting->notes ?? '—') .
+    "\nموعد الاجتماع: " . $meeting->meeting_date->format('Y-m-d H:i'),
+                                'type'    => $typeCommittee,
+                                'is_read' => false,
                             ]);
 
-                            Log::info(" إشعار جديد لعضو لجنة (User {$committeeUserId}) للاجتماع {$meeting->id}.");
-                        } else {
-                            Log::info(" إشعار مكرر لعضو لجنة (User {$committeeUserId}) — تم تخطيه.");
+                            Log::info("إشعار لعضو لجنة {$committeeUserId} للاجتماع {$meeting->id}");
                         }
                     }
                 }
             }
         }
 
-        $this->info('تم تنفيذ مهمة التذكير بالاجتماعات بنجاح.');
-        Log::info('انتهاء عملية فحص الاجتماعات.');
+        $this->info('تم تنفيذ تذكير الاجتماعات بنجاح');
+        Log::info('انتهاء مهمة تذكير الاجتماعات');
+
         return 0;
     }
 }

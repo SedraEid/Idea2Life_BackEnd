@@ -74,32 +74,54 @@ public function update(Request $request, $task_id)
     $task = Task::with('gantt.idea.owner')->findOrFail($task_id);
     $idea = $task->gantt->idea;
     $gantt = $task->gantt;
+
     if (!$idea || !$idea->owner || $idea->owner->id != $user->id) {
         return response()->json(['message' => 'لا يمكنك تعديل هذه المهمة لأنها لا تخصك.'], 403);
     }
+
     $ganttApproved = $idea->ganttCharts()
         ->where('approval_status', 'approved')
         ->exists();
+
     if (!$ganttApproved) {
         return response()->json([
-            'message' => 'لا يمكن تقييم هذه المرحلة قبل أن تتم الموافقة على المرحلة في الـ Gantt Chart.'
+            'message' => 'لا يمكن تعديل المهمة قبل الموافقة على المرحلة في الـ Gantt Chart.'
         ], 422);
     }
+
     $badPhasesCount = $idea->ganttCharts()->where('failure_count', 1)->count();
     if ($badPhasesCount >= 3) {
         return response()->json([
             'message' => 'لا يمكنك تعديل المهام حالياً لأن هناك 3 مراحل سيئة. يجب دفع المبلغ الجزائي أو المشروع قد يُلغى.'
         ], 403);
     }
+
     $validated = $request->validate([
+        'task_name' => 'sometimes|string|max:255',
+        'description' => 'sometimes|nullable|string',
+        'start_date' => 'sometimes|date',
+        'end_date' => 'sometimes|date|after_or_equal:start_date',
+        'priority' => 'sometimes|integer|min:1',
         'progress_percentage' => 'sometimes|numeric|min:0|max:100',
         'attachments' => 'sometimes|array',
         'attachments.*' => 'file|mimes:pdf,jpg,png,docx|max:5120',
     ]);
+
+    if (isset($validated['start_date']) && $validated['start_date'] < $gantt->start_date) {
+        return response()->json(['message' => 'تاريخ بداية المهمة لا يمكن أن يكون قبل بداية المرحلة.'], 422);
+    }
+
+    if (isset($validated['end_date']) && $validated['end_date'] > $gantt->end_date) {
+        return response()->json(['message' => 'تاريخ نهاية المهمة لا يمكن أن يكون بعد نهاية المرحلة.'], 422);
+    }
     if ($request->hasFile('attachments')) {
         $uploadedFiles = [];
         foreach ($request->file('attachments') as $file) {
-            $path = $file->store('task_attachments');
+            $path = $file->storeAs(
+                'task_attachments',
+                uniqid() . '_' . $file->getClientOriginalName(),
+                'public'
+            );
             $uploadedFiles[] = $path;
         }
         $existing = $task->attachments;
@@ -110,12 +132,22 @@ public function update(Request $request, $task_id)
 
         $validated['attachments'] = array_merge($existing, $uploadedFiles);
     }
+
     $task->update($validated);
     $this->updateGanttProgress($gantt);
+    $attachmentsWithLinks = [];
+    if (!empty($task->attachments)) {
+        foreach ($task->attachments as $path) {
+            $attachmentsWithLinks[] = asset('storage/' . $path);
+        }
+    }
+
+    $taskData = $task->toArray();
+    $taskData['attachments'] = $attachmentsWithLinks;
 
     return response()->json([
         'message' => 'تم تحديث المهمة بنجاح',
-        'data' => $task
+        'data' => $taskData
     ]);
 }
 
@@ -144,6 +176,7 @@ private function updateGanttProgress(GanttChart $gantt)
         $totalWeight += $weight;
         $totalProgress += ($progress * $weight);
     }
+
     $gantt->progress = $totalWeight > 0
         ? round($totalProgress / $totalWeight, 2)
         : 0;
@@ -151,7 +184,6 @@ private function updateGanttProgress(GanttChart $gantt)
     $gantt->status = $gantt->progress >= 100 ? 'completed' : 'in_progress';
     $gantt->save();
 }
-
 
     /**
      *  حذف تاسك

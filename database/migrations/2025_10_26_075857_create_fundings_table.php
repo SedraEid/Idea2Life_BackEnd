@@ -18,8 +18,8 @@ return new class extends Migration
             $table->decimal('requested_amount', 12, 2); // المبلغ الذي طلبه صاحب الفكرة
             $table->text('justification')->nullable(); // سبب طلب التمويل
 
-            $table->foreignId('report_id')->nullable()->constrained('reports')->onDelete('set null'); 
             $table->text('committee_notes')->nullable();
+            $table->boolean('is_approved')->nullable()->after('approved_amount');
 
             $table->decimal('approved_amount', 12, 2)->nullable(); // المبلغ الموافق عليه فعليًا
             $table->string('payment_method')->nullable(); // طريقة التحويل (محفظة)

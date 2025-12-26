@@ -319,7 +319,7 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)
         ], 422);
     }
         $requiredCompletion = 80; 
-    if ($gantt->completion_percentage < $requiredCompletion) {
+    if ($gantt->progress < $requiredCompletion) {
         $gantt->end_date = now()->addDays(3);
         $gantt->save();
         Notification::create([

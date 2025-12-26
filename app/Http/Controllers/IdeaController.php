@@ -164,11 +164,6 @@ public function committeeIdeasFullDetailsClean(Request $request)
         ->with([
             'owner:id,name,email',
             'roadmap',
-            'businessPlan',
-            'tasks',
-            'ganttCharts',
-            'launchProjects',
-            'postLaunchFollowUps'
         ])
         ->get();
 

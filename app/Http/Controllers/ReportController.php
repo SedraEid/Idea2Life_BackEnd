@@ -34,7 +34,6 @@ public function ownerIdeaReports(Request $request, $idea_id)//جلب التقا�
     $reports = Report::where('idea_id', $idea_id)
         ->with([
             'idea:id,title,status',
-            'committee:id,committee_name'
         ])
         ->orderBy('created_at', 'desc')
         ->get();
@@ -59,11 +58,6 @@ public function ownerIdeaReports(Request $request, $idea_id)//جلب التقا�
                 'title' => $report->idea->title,
                 'status' => $report->idea->status,
             ],
-            'committee' => $report->committee?->committee_name,
-            'strengths' => $report->strengths,
-            'weaknesses' => $report->weaknesses,
-            'recommendations' => $report->recommendations,
-            'created_at' => $report->created_at->format('Y-m-d H:i'),
         ];
     });
 

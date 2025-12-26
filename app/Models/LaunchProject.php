@@ -17,6 +17,8 @@ class LaunchProject extends Model
         'profit_allowed',
         'stabilized_at',
     ];
+
+    
     public function idea()
     {
         return $this->belongsTo(Idea::class);
