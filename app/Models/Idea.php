@@ -73,11 +73,6 @@ public function launchProjects()
 }
 
 
-    public function postLaunchFollowUps()
-    {
-        return $this->hasMany(PostLaunchFollowUp::class);
-    }
-
 
 
 

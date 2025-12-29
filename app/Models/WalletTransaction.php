@@ -33,16 +33,16 @@ class WalletTransaction extends Model
         return $this->belongsTo(Funding::class);
     }
 
-     public function sender()
-    {
-        return $this->belongsTo(User::class, 'sender_id');
-    }
+  public function sender()
+{
+    return $this->belongsTo(Wallet::class, 'sender_id');
+}
 
+public function receiver()
+{
+    return $this->belongsTo(Wallet::class, 'receiver_id');
+}
 
-      public function receiver()
-    {
-        return $this->belongsTo(User::class, 'receiver_id');
-    }
 
 
     

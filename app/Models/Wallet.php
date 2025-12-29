@@ -20,8 +20,12 @@ class Wallet extends Model
         return $this->belongsTo(User::class);
     }
 
-      public function walletTransactions()
+       public function sentTransactions()
     {
-        return $this->hasMany(WalletTransaction::class);
+        return $this->hasMany(WalletTransaction::class, 'sender_id');
+    }
+    public function receivedTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class, 'receiver_id');
     }
 }

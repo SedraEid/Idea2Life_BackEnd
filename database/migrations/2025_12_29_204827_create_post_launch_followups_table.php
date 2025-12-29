@@ -11,7 +11,6 @@ return new class extends Migration
         Schema::create('post_launch_followups', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('launch_project_id');
-            $table->unsignedBigInteger('idea_id');
 
             // نقطة المتابعة
             $table->enum('checkpoint', [
@@ -61,11 +60,6 @@ return new class extends Migration
             $table->foreign('launch_project_id')
                   ->references('id')
                   ->on('launch_projects')
-                  ->onDelete('cascade');
-
-            $table->foreign('idea_id')
-                  ->references('id')
-                  ->on('ideas')
                   ->onDelete('cascade');
 
             $table->foreign('reviewed_by')

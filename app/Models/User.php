@@ -50,16 +50,6 @@ public function ideas()
         return $this->hasOne(Wallet::class);
     }
 
-     public function sentTransactions()
-    {
-        return $this->hasMany(WalletTransaction::class, 'sender_id');
-    }
-
-     public function receivedTransactions()
-    {
-        return $this->hasMany(WalletTransaction::class, 'receiver_id');
-    }
-
         public function notifications()
     {
         return $this->hasMany(Notification::class);

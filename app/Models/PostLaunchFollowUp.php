@@ -12,7 +12,6 @@ class PostLaunchFollowUp extends Model
 
    protected $fillable = [
         'launch_project_id',
-        'idea_id',
         'checkpoint',
         'issue_type',
         'issue_description',
@@ -27,10 +26,6 @@ class PostLaunchFollowUp extends Model
     public function launchProject()
     {
         return $this->belongsTo(LaunchProject::class, 'launch_project_id');
-    }
-     public function idea()
-    {
-        return $this->belongsTo(Idea::class);
     }
 
     public function reviewer()

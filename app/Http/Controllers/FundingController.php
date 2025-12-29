@@ -270,43 +270,51 @@ public function evaluateFunding(Request $request, Funding $funding)
             'status'          => $validated['is_approved'] ? 'approved' : 'rejected',
         ]);
 
-        $idea = $funding->idea;
-        if ($validated['is_approved']) {
-            $investorUser = $funding->investor?->user;
-            $ownerUser    = $idea->owner;
-            $investorWallet = Wallet::where('user_id', $investorUser?->id)->first();
-            $ownerWallet    = Wallet::where('user_id', $ownerUser?->id)->first();
-            if (!$investorWallet || !$ownerWallet) {
-                DB::rollBack();
-                return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
-            }
-            $amount = $funding->approved_amount;
-            if ($investorWallet->balance < $amount) {
-                DB::rollBack();
-                return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'], 400);
-            }
-            $investorWallet->decrement('balance', $amount);
-            $ownerWallet->increment('balance', $amount);
-            WalletTransaction::create([
-                'wallet_id'        => $ownerWallet->id,
-                'funding_id'       => $funding->id,
-                'sender_id'        => $investorUser->id,
-                'receiver_id'      => $ownerUser->id,
-                'transaction_type' => 'transfer',
-                'amount'           => $amount,
-                'percentage'       => 0,
-                'beneficiary_role' => 'creator',
-                'status'           => 'completed',
-                'payment_method'   => 'wallet',
-                'notes'            => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
-            ]);
-            $funding->update([
-                'transfer_date'        => now(),
-                'transaction_reference'=> 'TX-' . uniqid(),
-                'payment_method'       => 'wallet',
-            ]);
-        }
-        $roadmapStages = [
+       $idea = $funding->idea;
+if ($validated['is_approved']) {
+    $investorUser = $funding->investor?->user;
+    $ownerUser    = $idea->owner;
+    $investorWallet = $investorUser?->wallet;
+    $ownerWallet    = $ownerUser?->wallet;
+
+    if (!$investorWallet || !$ownerWallet) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'
+        ], 404);
+    }
+
+    $amount = $funding->approved_amount;
+    if ($investorWallet->balance < $amount) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'
+        ], 400);
+    }
+    $investorWallet->decrement('balance', $amount);
+    $ownerWallet->increment('balance', $amount);
+    WalletTransaction::create([
+        'wallet_id'        => $ownerWallet->id,          
+        'funding_id'       => $funding->id,
+        'sender_id'        => $investorWallet->id,
+        'receiver_id'      => $ownerWallet->id,
+
+        'transaction_type' => 'transfer',
+        'amount'           => $amount,
+        'percentage'       => null,
+        'beneficiary_role' => 'creator',
+        'status'           => 'completed',
+        'payment_method'   => 'wallet',
+        'notes'            => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
+    ]);
+
+    $funding->update([
+        'transfer_date'         => now(),
+        'transaction_reference'=> 'TX-' . uniqid(),
+        'payment_method'        => 'wallet',
+    ]);
+}
+ $roadmapStages = [
             "تقديم الفكرة",
             "التقييم الأولي",
             "التخطيط المنهجي",
@@ -378,8 +386,8 @@ public function showFundingForIdea(Request $request, $idea_id)
         'idea:id,title,description,initial_evaluation_score,committee_id',
         'idea.committee:id,committee_name',
         'investor.user:id,name,email',
-        'walletTransactions.sender:id,name,email',
-        'walletTransactions.receiver:id,name,email',
+          'walletTransactions.sender.user:id,name,email',
+    'walletTransactions.receiver.user:id,name,email', 
     ])
     ->where('idea_id', $idea_id)
     ->get();
@@ -439,16 +447,19 @@ public function showFundingForIdea(Request $request, $idea_id)
                     'status' => $tx->status,
                     'payment_method' => $tx->payment_method,
                     'notes' => $tx->notes,
-                    'sender' => [
-                        'id' => $tx->sender->id ?? null,
-                        'name' => $tx->sender->name ?? null,
-                        'email' => $tx->sender->email ?? null,
-                    ],
-                    'receiver' => [
-                        'id' => $tx->receiver->id ?? null,
-                        'name' => $tx->receiver->name ?? null,
-                        'email' => $tx->receiver->email ?? null,
-                    ],
+                  'sender' => [
+    'wallet_id' => $tx->sender->id ?? null,
+    'user_id' => $tx->sender?->user_id ?? null,
+    'name' => $tx->sender?->user?->name ?? null,
+    'email' => $tx->sender?->user?->email ?? null,
+],
+'receiver' => [
+    'wallet_id' => $tx->receiver->id ?? null,
+    'user_id' => $tx->receiver?->user_id ?? null,
+    'name' => $tx->receiver?->user?->name ?? null,
+    'email' => $tx->receiver?->user?->email ?? null,
+],
+
                     'created_at' => $tx->created_at->format('Y-m-d H:i:s'),
                 ];
             }),
@@ -471,32 +482,34 @@ public function showFundingForIdea(Request $request, $idea_id)
     if (!$committeeMember) {
         return response()->json(['message' => 'أنت غير مرتبط بأي لجنة.'], 403);
     }
+
     $fundings = Funding::with([
-'idea:id,title,description,committee_id,owner_id',
+        'idea:id,title,description,committee_id,owner_id',
         'idea.owner:id,name,email',
         'idea.committee:id,committee_name',
         'investor.user:id,name,email',
-        'walletTransactions.sender:id,name,email',
-        'walletTransactions.receiver:id,name,email',
+        'walletTransactions.sender.user:id,name,email',  
+        'walletTransactions.receiver.user:id,name,email',
     ])
     ->whereHas('idea', function ($q) use ($committeeMember) {
         $q->where('committee_id', $committeeMember->committee_id);
     })
     ->get();
+
     $checks = [];
     foreach ($fundings as $funding) {
         foreach ($funding->walletTransactions as $tx) {
             $checks[] = [
                 'check_id' => $tx->id,
-                'from' => $tx->sender->name ?? 'غير معروف',
-                'to' => $tx->receiver->name ?? 'غير معروف',
+                'from' => $tx->sender?->user?->name ?? 'غير معروف',
+                'to' => $tx->receiver?->user?->name ?? 'غير معروف',
                 'amount' => $tx->amount,
                 'date' => $tx->created_at->format('Y-m-d'),
                 'payment_method' => $tx->payment_method ?? 'غير محدد',
                 'notes' => $tx->notes ?? '',
                 'funding_id' => $funding->id,
                 'idea_title' => $funding->idea->title ?? '',
-                'investor' => $funding->investor->user->name ?? '',
+                'investor' => $funding->investor?->user?->name ?? '',
                 'idea_owner' => $funding->idea->owner->name ?? '',
             ];
         }
@@ -508,12 +521,6 @@ public function showFundingForIdea(Request $request, $idea_id)
         'checks' => $checks,
     ]);
 }
-
-
-
-
-
-
 
 
 

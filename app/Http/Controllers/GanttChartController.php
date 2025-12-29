@@ -297,57 +297,115 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)
 }
 
 
+private function updateGanttProgress(GanttChart $gantt)
+{
+    $tasks = $gantt->tasks()->get();
+    if ($tasks->count() === 0) {
+        $gantt->progress = 0;
+        $gantt->status = 'pending';
+        $gantt->save();
+        return;
+    }
+
+    $totalWeight = 0;
+    $totalProgress = 0;
+    foreach ($tasks as $task) {
+        $start = Carbon::parse($task->start_date);
+        $end = Carbon::parse($task->end_date);
+
+        $duration = $start->diffInDays($end) + 1;
+        if ($duration <= 0) $duration = 1;
+
+        $weight = $duration;
+        $progress = $task->progress_percentage ?? 0;
+
+        $totalWeight += $weight;
+        $totalProgress += ($progress * $weight);
+    }
+
+    $gantt->progress = $totalWeight > 0
+        ? round($totalProgress / $totalWeight, 2)
+        : 0;
+
+    $gantt->status = $gantt->progress >= 100 ? 'completed' : 'in_progress';
+    $gantt->save();
+}
+
+
     //تقييم المرحلة من قبل اللجنة 
-  public function evaluatePhase(Request $request, $idea_id, $gantt_id)
+public function evaluatePhase(Request $request, $idea_id, $gantt_id)
 {
     $user = $request->user();
-    $gantt = GanttChart::where('id', $gantt_id)
+
+    $gantt = GanttChart::with([
+            'idea.owner',
+            'idea.committee.committeeMember'
+        ])
+        ->where('id', $gantt_id)
         ->where('idea_id', $idea_id)
-        ->with('idea.owner', 'idea.committee.committeeMember')
         ->first();
 
     if (!$gantt) {
-        return response()->json(['message' => 'المرحلة أو الفكرة غير موجودة.'], 404);
+        return response()->json([
+            'message' => 'المرحلة أو الفكرة غير موجودة.'
+        ], 404);
     }
     $committeeMember = $user->committeeMember;
-    if (!$committeeMember || $committeeMember->committee_id != $gantt->idea->committee_id) {
-        return response()->json(['message' => 'ليس لديك صلاحية تقييم هذه المرحلة.'], 403);
-    }
-    if (now()->lt($gantt->end_date)) {
+    if (
+        !$committeeMember ||
+        !$gantt->idea->committee ||
+        $committeeMember->committee_id !== $gantt->idea->committee_id
+    ) {
         return response()->json([
-            'message' => "لا يمكن تقييم المرحلة قبل تاريخ الانتهاء ({$gantt->end_date->format('Y-m-d')})."
+            'message' => 'ليس لديك صلاحية تقييم هذه المرحلة.'
+        ], 403);
+    }
+    $endDate = Carbon::parse($gantt->end_date);
+    if (now()->lt($endDate)) {
+        return response()->json([
+            'message' => "لا يمكن تقييم المرحلة قبل تاريخ الانتهاء ({$endDate->format('Y-m-d')})."
         ], 422);
     }
-        $requiredCompletion = 80; 
+    $this->updateGanttProgress($gantt);
+$gantt->refresh();
+    $requiredCompletion = 80;
     if ($gantt->progress < $requiredCompletion) {
-        $gantt->end_date = now()->addDays(3);
+        $newEndDate = now()->addDays(3);
+        $gantt->end_date = $newEndDate;
         $gantt->save();
         Notification::create([
             'user_id' => $gantt->idea->owner->id,
             'title' => 'مهلة إضافية لإكمال المرحلة',
-            'message' => "مرحلة '{$gantt->phase_name}' لم تصل نسبة الإنجاز إلى {$requiredCompletion}%. لديك مهلة إضافية حتى {$gantt->end_date->format('Y-m-d')} لإكمال المهام.",
+            'message' => "مرحلة '{$gantt->phase_name}' لم تصل إلى {$requiredCompletion}%.
+لديك مهلة حتى {$newEndDate->format('Y-m-d')}.",
             'type' => 'warning',
             'is_read' => false,
         ]);
+
         return response()->json([
-            'message' => "نسبة الإنجاز أقل من {$requiredCompletion}%. تم منحك مهلة إضافية لإكمال المهام.",
-            'new_end_date' => $gantt->end_date->format('Y-m-d')
+            'message' => "تم منح مهلة إضافية بسبب انخفاض نسبة الإنجاز.",
+            'new_end_date' => $newEndDate->format('Y-m-d')
         ], 422);
     }
     $validated = $request->validate([
         'score' => 'required|integer|min:0|max:100',
         'comments' => 'nullable|string|max:500',
     ]);
+
     $score = $validated['score'];
     $gantt->evaluation_score = $score;
     $gantt->evaluation_comments = $validated['comments'] ?? null;
     if ($score >= 71) {
         $gantt->save();
-    } elseif ($score >= 41 && $score <= 70) {
+    }
+    elseif ($score >= 41 && $score <= 70) {
+
+        $gantt->save();
+
         Notification::create([
             'user_id' => $gantt->idea->owner->id,
-            'title' => 'تنبيه: الأداء متوسط',
-            'message' => "مرحلة '{$gantt->phase_name}' بحاجة لتحسين. حافظ على جودة التنفيذ.",
+            'title' => 'تنبيه: أداء متوسط',
+            'message' => "مرحلة '{$gantt->phase_name}' تحتاج تحسين.",
             'type' => 'warning',
             'is_read' => false,
         ]);
@@ -355,20 +413,22 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)
         foreach ($gantt->idea->committee->committeeMember as $member) {
             Notification::create([
                 'user_id' => $member->user_id,
-                'title' => 'تنبيه: تقييم متوسط',
+                'title' => 'تنبيه تقييم متوسط',
                 'message' => "مرحلة '{$gantt->phase_name}' لمشروع '{$gantt->idea->title}' حصلت على تقييم متوسط.",
                 'type' => 'info',
                 'is_read' => false,
             ]);
         }
+    }
+    else {
 
+        $gantt->failure_count = ($gantt->failure_count ?? 0) + 1;
         $gantt->save();
-    } elseif ($score <= 40) {
-        $gantt->failure_count += 1;
+
         Notification::create([
             'user_id' => $gantt->idea->owner->id,
-            'title' => 'فشل في المرحلة',
-            'message' => "تم تقييم مرحلة '{$gantt->phase_name}' بنتيجة ضعيفة للغاية.",
+            'title' => 'فشل المرحلة',
+            'message' => "مرحلة '{$gantt->phase_name}' فشلت بالتقييم.",
             'type' => 'danger',
             'is_read' => false,
         ]);
@@ -376,32 +436,36 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)
         foreach ($gantt->idea->committee->committeeMember as $member) {
             Notification::create([
                 'user_id' => $member->user_id,
-                'title' => 'تنبيه: مرحلة فاشلة',
-                'message' => "مرحلة '{$gantt->phase_name}' لمشروع '{$gantt->idea->title}' فشلت في التقييم.",
+                'title' => 'مرحلة فاشلة',
+                'message' => "مرحلة '{$gantt->phase_name}' لمشروع '{$gantt->idea->title}' فشلت.",
                 'type' => 'warning',
                 'is_read' => false,
             ]);
         }
-        $gantt->save();
     }
     $idea = $gantt->idea;
-    $failedPhases = $idea->ganttCharts()->where('failure_count', '>=', 1)->count();
+    $failedPhases = $idea->ganttCharts()
+        ->where('failure_count', '>=', 1)
+        ->count();
 
     if ($failedPhases >= 3) {
+
         $idea->roadmap_stage = 'paused_for_payment';
         $idea->save();
+
         Notification::create([
             'user_id' => $idea->owner->id,
-            'title' => 'تم إيقاف المشروع',
-            'message' => "تم إيقاف المشروع بعد 3 تقييمات فاشلة. يجب دفع المبلغ الجزائي لمتابعة العمل.",
+            'title' => 'إيقاف المشروع',
+            'message' => 'تم إيقاف المشروع بعد فشل 3 مراحل. يجب دفع الغرامة لمتابعة العمل.',
             'type' => 'critical',
             'is_read' => false,
         ]);
+
         foreach ($idea->committee->committeeMember as $member) {
             Notification::create([
                 'user_id' => $member->user_id,
                 'title' => 'مشروع متوقف',
-                'message' => "مشروع '{$idea->title}' تم إيقافه بعد فشل 3 مراحل.",
+                'message' => "مشروع '{$idea->title}' تم إيقافه.",
                 'type' => 'info',
                 'is_read' => false,
             ]);
@@ -412,7 +476,6 @@ public function approveOrRejectAllPhases(Request $request, $idea_id)
         'gantt' => $gantt
     ]);
 }
-
     //عرض تقييم اللجنة لمرحلة معينة لصاحب الفكرة 
 public function getPhaseEvaluation(Request $request, $idea_id, $gantt_id)
 {
@@ -780,8 +843,8 @@ public function approveFunding(Request $request, Funding $funding)
 
     $investorUserId = $funding->investor_id;
     $ownerUserId    = $funding->idea->owner_id;
-    $investorWallet = Wallet::where('user_id', $investorUserId)->first();
-    $ownerWallet    = Wallet::where('user_id', $ownerUserId)->first();
+$investorWallet = Wallet::where('user_id', $funding->investor_id)->first();
+$ownerWallet    = Wallet::where('user_id', $funding->idea->owner_id)->first();
 
     if (!$investorWallet || !$ownerWallet) {
         return response()->json([
@@ -801,10 +864,10 @@ public function approveFunding(Request $request, Funding $funding)
         $ownerWallet->increment('balance', $amount);
 
         WalletTransaction::create([
-            'wallet_id'        => $ownerWallet->id,
-            'funding_id'       => $funding->id,
-            'sender_id'        => $investorUserId,
-            'receiver_id'      => $ownerUserId,
+          'wallet_id'        => $ownerWallet->id, 
+        'funding_id'       => $funding->id,
+        'sender_id'        => $investorWallet->id,
+        'receiver_id'      => $ownerWallet->id,   
             'transaction_type' => 'transfer',
             'amount'           => $amount,
             'percentage'       => 0,
