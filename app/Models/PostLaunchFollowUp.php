@@ -9,27 +9,27 @@ class PostLaunchFollowUp extends Model
 {
     protected $table = 'post_launch_followups';
     use HasFactory;
-
-   protected $fillable = [
+    
+    protected $fillable = [
         'launch_project_id',
-        'checkpoint',
-        'issue_type',
-        'issue_description',
-        'platform_action',
+        'followup_phase',
+        'scheduled_date',
         'status',
-        'requires_reexecution',
-        'committee_recommendation',
-        'reviewed_by',
+        'notes',
+        'marketing_support_given',
+        'product_issue_detected',
+        'actions_taken',
     ];
 
+    protected $casts = [
+        'scheduled_date' => 'date',
+        'marketing_support_given' => 'boolean',
+        'product_issue_detected' => 'boolean',
+    ];
 
-    public function launchProject()
+        public function launchProject()
     {
-        return $this->belongsTo(LaunchProject::class, 'launch_project_id');
+        return $this->belongsTo(LaunchRequest::class);
     }
-
-    public function reviewer()
-    {
-        return $this->belongsTo(User::class, 'reviewed_by');
-    }
+   
 }

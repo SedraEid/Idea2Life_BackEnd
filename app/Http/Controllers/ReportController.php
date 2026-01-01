@@ -14,29 +14,52 @@ use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
-public function ownerIdeaReports(Request $request, $idea_id)//جلب التقارير لصاحب الفكرة و للفكرة التي هو بها الان
+public function ownerIdeaReports(Request $request, $idea_id)
 {
     $user = $request->user();
+
     if ($user->role !== 'idea_owner') {
         return response()->json([
             'message' => 'غير مصرح لك.'
-        ], 404);
+        ], 403);
     }
+
     $idea = Idea::where('owner_id', $user->id)
-                ->where('id', $idea_id)
-                ->first();
+        ->where('id', $idea_id)
+        ->first();
 
     if (!$idea) {
         return response()->json([
             'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لك.',
         ], 404);
     }
+
     $reports = Report::where('idea_id', $idea_id)
         ->with([
-            'idea:id,title,status',
+            'meeting:id,meeting_date,notes', 
         ])
         ->orderBy('created_at', 'desc')
-        ->get();
+        ->get()
+        ->map(function ($report) {
+            return [
+                'report_id'        => $report->id,
+                'report_type'      => $report->report_type,
+                'evaluation_score' => $report->evaluation_score,
+                'status'           => $report->status,
+
+                'description'      => $report->description,
+                'strengths'        => $report->strengths,
+                'weaknesses'       => $report->weaknesses,
+                'recommendations'  => $report->recommendations,
+
+                'meeting' => $report->meeting ? [
+                    'meeting_date' => $report->meeting->meeting_date,
+                    'notes'        => $report->meeting->notes,
+                ] : null,
+
+                'created_at' => $report->created_at->format('Y-m-d H:i'),
+            ];
+        });
 
     if ($reports->isEmpty()) {
         return response()->json([
@@ -46,27 +69,17 @@ public function ownerIdeaReports(Request $request, $idea_id)//جلب التقا�
         ], 200);
     }
 
-    $formattedReports = $reports->map(function ($report) {
-        return [
-            'report_id' => $report->id,
-            'report_type' => $report->report_type,
-            'description' => $report->description,
-            'evaluation_score' => $report->evaluation_score,
-            'status' => $report->status,
-            'idea' => [
-                'id' => $report->idea->id,
-                'title' => $report->idea->title,
-                'status' => $report->idea->status,
-            ],
-        ];
-    });
-
     return response()->json([
-        'message' => 'تم جلب جميع التقارير الخاصة بهذه الفكرة.',
-        'total_reports' => $formattedReports->count(),
-        'data' => $formattedReports,
-    ], 200);
+        'idea' => [
+            'id'     => $idea->id,
+            'title'  => $idea->title,
+            'status' => $idea->status,
+        ],
+        'total_reports' => $reports->count(),
+        'reports' => $reports,
+    ]);
 }
+
 
 
 

@@ -368,7 +368,7 @@ public function evaluatePhase(Request $request, $idea_id, $gantt_id)
     }
     $this->updateGanttProgress($gantt);
 $gantt->refresh();
-    $requiredCompletion = 80;
+    $requiredCompletion = 90;
     if ($gantt->progress < $requiredCompletion) {
         $newEndDate = now()->addDays(3);
         $gantt->end_date = $newEndDate;
@@ -659,6 +659,18 @@ public function requestFundingGantt(Request $request, $gantt_id)
             'message' => 'ليس لديك صلاحية طلب التمويل لهذه الفكرة.'
         ], 403);
     }
+
+       if ($gantt->approval_status !== 'approved') {
+        return response()->json([
+            'message' => 'لا يمكنك طلب تمويل لهذه المرحلة قبل موافقة اللجنة عليها.'
+        ], 403);
+    }
+
+        if ($gantt->end_date && now()->greaterThan($gantt->end_date)) {
+        return response()->json([
+            'message' => 'انتهت مدة هذه المرحلة ولا يمكن طلب تمويل لها.'
+        ], 403);
+    }
     $badPhasesCount = $idea->ganttCharts
         ->where('failure_count', '>=', 1)
         ->count();
@@ -778,7 +790,6 @@ public function requestFundingTask(Request $request, $task_id)
         'idea_id'          => $idea->id,
         'committee_id'     => $idea->committee_id,
         'investor_id'      => $investor?->user_id,
-        'meeting_id'       => $meeting->id,
         'requested_amount' => $validated['requested_amount'],
         'justification'    => $validated['justification'],
         'status'           => 'requested',

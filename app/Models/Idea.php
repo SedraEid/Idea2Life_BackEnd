@@ -67,10 +67,10 @@ class Idea extends Model
     return $this->hasMany(GanttChart::class);
 }
 
-public function launchProjects()
-{
-    return $this->hasMany(LaunchProject::class, 'idea_id');
-}
+ public function launchRequests()
+    {
+        return $this->hasMany(LaunchRequest::class);
+    }
 
 
 

@@ -36,7 +36,7 @@ public function requestFunding(Request $request, Idea $idea) // طلب تموي�
         ->first();
     if ($existingFunding) {
         return response()->json([
-            'message' => 'لا يمكنك طلب تمويل جديد قبل مراجعة الطلب الحالي.',
+            'message' => ' لا يمكنك طلب تمويل جديد قبل مراجعة الطلب الحالي او اذا تمت الموافقة على التمويل.',
             'existing_funding' => $existingFunding
         ], 400);
     }
@@ -47,15 +47,15 @@ public function requestFunding(Request $request, Idea $idea) // طلب تموي�
     if (!$idea->committee) {
         return response()->json(['message' => 'لا يمكن العثور على لجنة مرتبطة بهذه الفكرة.'], 400);
     }
-  $investor = $idea->committee
+$investor = $idea->committee
     ->committeeMember
-    ->where('role_in_committee', 'investor')
-    ->first();
-    if (!$investor) {
-        return response()->json([
-            'message' => 'لا يوجد مستثمر متاح ضمن اللجنة الحالية، سيتم مراجعة الطلب لاحقاً.',
-        ], 400);
-    }
+    ->firstWhere('role_in_committee', 'investor');
+
+if (!$investor) {
+    return response()->json([
+        'message' => 'لا يوجد مستثمر معرف ضمن اللجنة لهذه الفكرة.'
+    ], 422);
+}
     $meeting = $idea->meetings()->create([
         'meeting_date' => now()->addDays(2),
         'meeting_link' => null,
@@ -65,7 +65,7 @@ public function requestFunding(Request $request, Idea $idea) // طلب تموي�
     ]);
     $funding = Funding::create([
         'idea_id' => $idea->id,
-        'investor_id' => $investor->id,
+'investor_id' => $investor->user_id,
         'requested_amount' => $request->requested_amount,
         'justification' => $request->justification,
         'status' => 'requested',
@@ -248,7 +248,7 @@ public function evaluateFunding(Request $request, Funding $funding)
     $meeting = $funding->idea
         ->meetings()
         ->where('type', 'funding_request')
-        ->latest('meeting_date')
+        ->orderBy('meeting_date', 'desc')
         ->first();
     if (!$meeting || $meeting->meeting_date > now()) {
         return response()->json([
@@ -272,11 +272,10 @@ public function evaluateFunding(Request $request, Funding $funding)
 
        $idea = $funding->idea;
 if ($validated['is_approved']) {
-    $investorUser = $funding->investor?->user;
-    $ownerUser    = $idea->owner;
-    $investorWallet = $investorUser?->wallet;
-    $ownerWallet    = $ownerUser?->wallet;
-
+$investorUser = $funding->investor; 
+$ownerUser    = $idea->owner;          
+$investorWallet = $investorUser?->wallet;
+$ownerWallet    = $ownerUser?->wallet;
     if (!$investorWallet || !$ownerWallet) {
         DB::rollBack();
         return response()->json([

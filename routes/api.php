@@ -7,6 +7,7 @@ use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
 use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\LaunchProjectController;
+use App\Http\Controllers\LaunchRequestController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PostLaunchFollowupController;
@@ -169,15 +170,33 @@ Route::middleware('auth:sanctum')->group(function () {//تمويل للمرحل�
     Route::post('/funding/{funding}/evaluate/gantt/task', [GanttChartController::class, 'approveFunding']);
 });
 
-//ارسال طلب اطلاق المشروع من قبل صاحب الفكرة 
-Route::middleware('auth:sanctum')->post('/ideas/{idea}/launch', [LaunchProjectController::class, 'markReadyForLaunch']);
 
-Route::middleware('auth:sanctum')->group(function () {
-    // عرض طلبات الإطلاق الخاصة باللجنة
-    Route::get('/committee/launch-requests', [LaunchProjectController::class, 'committeeLaunchRequests']);
+Route::middleware('auth:sanctum')->group(function () {//طلب اطلاق المشروع من قبل صاحب الفكرة
+    Route::post('/ideas/{idea_id}/launch-request', [LaunchRequestController::class, 'requestLaunch']);
 });
 
-Route::middleware('auth:sanctum')->post('/launch/{launch}/decision', //قرار اللجنة بالاطلاق
-    [LaunchProjectController::class, 'committeeDecision']);
+Route::middleware('auth:sanctum')->group(function () {//عرض طلبات الاطلاق للجنة
+    Route::get('/launch-requests/pending', [LaunchRequestController::class, 'showPendingLaunchRequests']);
+});
 
-Route::middleware('auth:sanctum')->get('/ideas/{idea}/launch-result', [LaunchProjectController::class, 'launchResult']);//عرض نتيجة طلب الاطلاق لصاحب الفكرة 
+//عرض طلبات الاطلاق لصاحب الفكرة
+Route::middleware('auth:sanctum')->get('/my-launch-requests', [LaunchRequestController::class, 'myLaunchRequests']);
+
+
+Route::middleware('auth:sanctum')->group(function () {//تقييم طلب الاطلاق من قبل اللجنة
+    Route::post('/committee/launch-requests/{launchRequestId}/evaluate',[LaunchRequestController::class, 'evaluateLaunchRequest']
+    );
+
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    // عرض قرار اللجنة بخصوص طلب الإطلاق لصاحب الفكرة
+    Route::get('/ideas/{idea_id}/launch-decision', [LaunchRequestController::class, 'showLaunchDecision']);
+});
+
+//طلب تمويل بعد الموافقة على طلب الاطلاق
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/ideas/{idea_id}/request-funding', [LaunchRequestController::class, 'requestFunding']);
+});
+//و للموافقة على التمويل استخدمي راوت سطر 103
+

@@ -55,14 +55,9 @@ public function ideas()
         return $this->hasMany(Notification::class);
     }
     
-        public function followUps()
+      public function approvedLaunchRequests()
     {
-        return $this->hasMany(PostLaunchFollowUp::class, 'recorded_by');
-    }
-
-       public function reviewedFollowUps()
-    {
-        return $this->hasMany(PostLaunchFollowUp::class, 'reviewed_by');
+        return $this->hasMany(LaunchRequest::class, 'approved_by');
     }
 
 }

@@ -114,10 +114,9 @@ public function update(Request $request, Idea $idea) // تعديل الفكرة 
     }
     if ($idea->status === 'needs_revision') {
         $initialReport = $idea->reports()
-            ->where('report_type', 'initial_evaluation')
             ->latest()
             ->first();
-        if (!$initialReport || $initialReport->evaluation_score < 50 || $initialReport->evaluation_score >= 80) {
+        if (!$initialReport) {
             return response()->json(['message' => 'لا يمكن تعديل الفكرة في هذه المرحلة.'], 403);
         }
     }if ($idea->status === 'approved') {

@@ -30,9 +30,9 @@ class Funding extends Model
         return $this->belongsTo(Idea::class);
     }
 
-      public function investor()
+public function investor()
 {
-    return $this->belongsTo(CommitteeMember::class, 'investor_id');
+    return $this->belongsTo(User::class, 'investor_id');
 }
 
       public function walletTransactions()
