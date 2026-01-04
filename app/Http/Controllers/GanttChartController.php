@@ -706,7 +706,7 @@ public function requestFundingGantt(Request $request, $gantt_id)
         ->first();
     $funding = Funding::create([
         'idea_id' => $idea->id,
-        'investor_id' => $investorMember?->user_id,
+'investor_id' => $investorMember?->id, 
         'requested_amount' => $validated['requested_amount'],
         'justification' => $validated['justification'],
         'status' => 'requested',
@@ -789,7 +789,7 @@ public function requestFundingTask(Request $request, $task_id)
     $funding = Funding::create([
         'idea_id'          => $idea->id,
         'committee_id'     => $idea->committee_id,
-        'investor_id'      => $investor?->user_id,
+        'investor_id'      => $investor?->id,
         'requested_amount' => $validated['requested_amount'],
         'justification'    => $validated['justification'],
         'status'           => 'requested',
@@ -851,74 +851,75 @@ public function approveFunding(Request $request, Funding $funding)
             'funding' => $funding,
         ]);
     }
+$investorUser = $funding->investor?->user; 
+$ownerUser    = $funding->idea->owner;   
 
-    $investorUserId = $funding->investor_id;
-    $ownerUserId    = $funding->idea->owner_id;
-$investorWallet = Wallet::where('user_id', $funding->investor_id)->first();
-$ownerWallet    = Wallet::where('user_id', $funding->idea->owner_id)->first();
+$investorWallet = $investorUser?->wallet;
+$ownerWallet    = $ownerUser?->wallet;
 
-    if (!$investorWallet || !$ownerWallet) {
-        return response()->json([
-            'message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'
-        ], 404);
-    }
-    $amount = $validated['approved_amount'] ?? $funding->requested_amount;
-    if ($investorWallet->balance < $amount) {
-        return response()->json([
-            'message' => 'رصيد المستثمر غير كافٍ.'
-        ], 400);
-    }
-
-    DB::beginTransaction();
-    try {
-        $investorWallet->decrement('balance', $amount);
-        $ownerWallet->increment('balance', $amount);
-
-        WalletTransaction::create([
-          'wallet_id'        => $ownerWallet->id, 
-        'funding_id'       => $funding->id,
-        'sender_id'        => $investorWallet->id,
-        'receiver_id'      => $ownerWallet->id,   
-            'transaction_type' => 'transfer',
-            'amount'           => $amount,
-            'percentage'       => 0,
-            'beneficiary_role' => 'creator',
-            'status'           => 'completed',
-            'payment_method'   => 'wallet',
-            'notes'            => 'تم تحويل مبلغ التمويل بعد موافقة اللجنة.',
-        ]);
-
-        $funding->update([
-            'status'                => 'funded',
-            'is_approved'           => true,
-            'approved_amount'       => $amount,
-            'committee_notes'       => $validated['committee_notes'] ?? null,
-            'payment_method'        => 'wallet',
-            'transfer_date'         => now(),
-            'transaction_reference' => 'TX-' . uniqid(),
-        ]);
-
-        DB::commit();
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        return response()->json([
-            'message' => 'فشل تحويل التمويل.',
-            'error'   => $e->getMessage(),
-        ], 500);
-    }
-
-    Notification::create([
-        'user_id' => $ownerUserId,
-        'title'   => 'تم تحويل التمويل',
-        'message' => "تم تحويل مبلغ {$amount} إلى محفظتك بعد موافقة اللجنة.",
-        'type'    => 'funding_approved',
-        'is_read' => false,
-    ]);
-
+if (!$investorWallet || !$ownerWallet) {
     return response()->json([
-        'message' => 'تم تحويل مبلغ التمويل بنجاح.',
-        'funding' => $funding,
+        'message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'
+    ], 404);
+}
+
+$amount = $validated['approved_amount'] ?? $funding->requested_amount;
+if ($investorWallet->balance < $amount) {
+    return response()->json([
+        'message' => 'رصيد المستثمر غير كافٍ.'
+    ], 400);
+}
+
+DB::beginTransaction();
+try {
+    $investorWallet->decrement('balance', $amount);
+    $ownerWallet->increment('balance', $amount);
+
+    WalletTransaction::create([
+        'wallet_id'        => $ownerWallet->id, 
+        'funding_id'       => $funding->id,
+        'sender_id'        => $investorUser->id,   // معرف المستخدم المرسل
+        'receiver_id'      => $ownerUser->id,      // معرف المستخدم المستلم
+        'transaction_type' => 'transfer',
+        'amount'           => $amount,
+        'percentage'       => 0,
+        'beneficiary_role' => 'creator',
+        'status'           => 'completed',
+        'payment_method'   => 'wallet',
+        'notes'            => 'تم تحويل مبلغ التمويل بعد موافقة اللجنة.',
     ]);
+
+    $funding->update([
+        'status'                => 'funded',
+        'is_approved'           => true,
+        'approved_amount'       => $amount,
+        'committee_notes'       => $validated['committee_notes'] ?? null,
+        'payment_method'        => 'wallet',
+        'transfer_date'         => now(),
+        'transaction_reference' => 'TX-' . uniqid(),
+    ]);
+
+    DB::commit();
+} catch (\Throwable $e) {
+    DB::rollBack();
+    return response()->json([
+        'message' => 'فشل تحويل التمويل.',
+        'error'   => $e->getMessage(),
+    ], 500);
+}
+
+Notification::create([
+    'user_id' => $ownerUser->id, 
+    'title'   => 'تم تحويل التمويل',
+    'message' => "تم تحويل مبلغ {$amount} إلى محفظتك بعد موافقة اللجنة.",
+    'type'    => 'funding_approved',
+    'is_read' => false,
+]);
+
+return response()->json([
+    'message' => 'تم تحويل مبلغ التمويل بنجاح.',
+    'funding' => $funding,
+]);
 }
 
 

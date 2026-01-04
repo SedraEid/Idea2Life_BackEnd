@@ -5,8 +5,6 @@ use App\Http\Controllers\BusinessPlanController;
 use App\Http\Controllers\FundingController;
 use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
-use App\Http\Controllers\LaunchController;
-use App\Http\Controllers\LaunchProjectController;
 use App\Http\Controllers\LaunchRequestController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificationController;
@@ -18,6 +16,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoadmapController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
+use App\Models\PostLaunchFollowUp;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -200,3 +199,16 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 //و للموافقة على التمويل استخدمي راوت سطر 103
 
+
+// عرض كل المتابعات بعد الإطلاق لصاحب الفكرة
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/my-post-launch-followups', [PostLaunchFollowupController::class, 'getMyPostLaunchFollowups']);
+});
+
+//عرض كل المتابعات بعد الاطلاق للجنة المشرفة 
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/my-post-launch-followups-commitee', [PostLaunchFollowupController::class, 'getCommitteePostLaunchFollowups']);
+});
+
+//تقييم المتابعة بعد الاطلاق من قبل اللجنة 
+Route::middleware('auth:sanctum')->post('/post-launch-followups/{followup}/evaluate', [PostLaunchFollowupController::class, 'evaluateFollowup']);

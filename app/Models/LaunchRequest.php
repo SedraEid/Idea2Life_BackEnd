@@ -37,6 +37,6 @@ class LaunchRequest extends Model
     }
         public function postLaunchFollowUps()
     {
-        return $this->hasMany(PostLaunchFollowUp::class, 'launch_project_id');
+        return $this->hasMany(PostLaunchFollowUp::class, 'launch_request_id');
     }
 }

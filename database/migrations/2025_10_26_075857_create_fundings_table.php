@@ -13,8 +13,10 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('idea_id')->constrained('ideas')->onDelete('cascade');
-            $table->foreignId('investor_id')->nullable()->constrained('users')->onDelete('set null'); 
-
+$table->foreignId('investor_id')
+      ->nullable()
+      ->constrained('committee_members') 
+      ->onDelete('set null');
             $table->decimal('requested_amount', 12, 2); // المبلغ الذي طلبه صاحب الفكرة
             $table->text('justification')->nullable(); // سبب طلب التمويل
 

@@ -47,15 +47,24 @@ public function requestFunding(Request $request, Idea $idea) // طلب تموي�
     if (!$idea->committee) {
         return response()->json(['message' => 'لا يمكن العثور على لجنة مرتبطة بهذه الفكرة.'], 400);
     }
-$investor = $idea->committee
+$investorMember = $idea->committee
     ->committeeMember
     ->firstWhere('role_in_committee', 'investor');
 
-if (!$investor) {
+if (!$investorMember) {
     return response()->json([
         'message' => 'لا يوجد مستثمر معرف ضمن اللجنة لهذه الفكرة.'
     ], 422);
 }
+$funding = Funding::create([
+    'idea_id' => $idea->id,
+    'investor_id' => $investorMember->id, 
+    'requested_amount' => $request->requested_amount,
+    'justification' => $request->justification,
+    'status' => 'requested',
+]);
+
+
     $meeting = $idea->meetings()->create([
         'meeting_date' => now()->addDays(2),
         'meeting_link' => null,
@@ -63,14 +72,7 @@ if (!$investor) {
         'requested_by' => 'owner',
         'type' => 'funding_request',
     ]);
-    $funding = Funding::create([
-        'idea_id' => $idea->id,
-'investor_id' => $investor->user_id,
-        'requested_amount' => $request->requested_amount,
-        'justification' => $request->justification,
-        'status' => 'requested',
-        'meeting_id' => $meeting->id,
-    ]);
+
     if ($idea->roadmap) {
         $stages = [
             "تقديم الفكرة",
@@ -272,7 +274,7 @@ public function evaluateFunding(Request $request, Funding $funding)
 
        $idea = $funding->idea;
 if ($validated['is_approved']) {
-$investorUser = $funding->investor; 
+$investorUser = $funding->investor?->user; 
 $ownerUser    = $idea->owner;          
 $investorWallet = $investorUser?->wallet;
 $ownerWallet    = $ownerUser?->wallet;
@@ -295,8 +297,8 @@ $ownerWallet    = $ownerUser?->wallet;
     WalletTransaction::create([
         'wallet_id'        => $ownerWallet->id,          
         'funding_id'       => $funding->id,
-        'sender_id'        => $investorWallet->id,
-        'receiver_id'      => $ownerWallet->id,
+ 'sender_id'        => $investorUser->id,  
+    'receiver_id'      => $ownerUser->id, 
 
         'transaction_type' => 'transfer',
         'amount'           => $amount,

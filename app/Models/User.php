@@ -29,8 +29,6 @@ class User extends Authenticatable
         'bio',           
         'committee_role',  
     ];
-
-    
     protected $hidden = [
         'password',
     ];
@@ -59,5 +57,11 @@ public function ideas()
     {
         return $this->hasMany(LaunchRequest::class, 'approved_by');
     }
+
+    public function postLaunchFollowups()
+{
+    return $this->hasMany(PostLaunchFollowup::class,'reviewed_by');
+}
+
 
 }
