@@ -188,29 +188,50 @@ public function update(Request $request, $id)
 private function updateRoadmapStage(Idea $idea)
 {
     $roadmapStages = [
-        "تقديم الفكرة",
-        "التقييم الأولي",
-        "التخطيط المنهجي",
-        "التقييم المتقدم قبل التمويل",
-        "التمويل",
-        "التنفيذ والتطوير",
-        "الإطلاق",
-        "المتابعة بعد الإطلاق",
-        "استقرار المشروع وانفصاله عن المنصة",
+        ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+        ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+        ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+        ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+        ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+        ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+        ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+        ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+        ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
     ];
-    $currentStage = "التنفيذ والتطوير";
-    $currentStageIndex = array_search($currentStage, $roadmapStages);
+    $currentStageName = 'Execution and Development';
+    $currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
+    $nextStageName = $currentStageIndex + 1 < count($roadmapStages) 
+        ? $roadmapStages[$currentStageIndex + 1]['name'] 
+        : null;
+
+    $nextActor = $currentStageIndex + 1 < count($roadmapStages) 
+        ? $roadmapStages[$currentStageIndex + 1]['actor'] 
+        : null;
+
     $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
-        $idea->update([
-        'roadmap_stage' => $currentStage,
+    $stageDescription = "Stage executed by: " . $roadmapStages[$currentStageIndex]['actor'] .
+                        ($nextStageName ? " | Next stage: $nextStageName (executed by: $nextActor)" : "");
+
+    $idea->update([
+        'roadmap_stage' => $currentStageName,
     ]);
+
     if ($roadmap = $idea->roadmap) {
         $roadmap->update([
-            'current_stage' => $currentStage,
-            'stage_description' => "المرحلة الحالية: {$currentStage}",
+            'current_stage' => $currentStageName,
+            'stage_description' => $stageDescription,
             'progress_percentage' => $progressPercentage,
             'last_update' => now(),
-            'next_step' => $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة',
+            'next_step' => $nextStageName,
+        ]);
+    } else {
+        Roadmap::create([
+            'idea_id' => $idea->id,
+            'current_stage' => $currentStageName,
+            'stage_description' => $stageDescription,
+            'progress_percentage' => $progressPercentage,
+            'last_update' => now(),
+            'next_step' => $nextStageName,
         ]);
     }
 }

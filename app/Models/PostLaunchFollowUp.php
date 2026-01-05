@@ -22,6 +22,9 @@ class PostLaunchFollowUp extends Model
         'actions_taken',
         'committee_notes',
         'reviewed_by',
+        'is_stable',
+        'profit_distributed'
+
     ];
 
         public function launchRequest()

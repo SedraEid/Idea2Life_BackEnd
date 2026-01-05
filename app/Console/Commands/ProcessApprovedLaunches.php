@@ -23,45 +23,59 @@ class ProcessApprovedLaunches extends Command
             ->get();
 
         $roadmapStages = [
-            "تقديم الفكرة",
-            "التقييم الأولي",
-            "التخطيط المنهجي",
-            "التقييم المتقدم قبل التمويل",
-            "التمويل",
-            "التنفيذ والتطوير",
-            "الإطلاق",
-            "المتابعة بعد الإطلاق",
-            "استقرار المشروع وانفصاله عن المنصة",
+            ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+            ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+            ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+            ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+            ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+            ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+            ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+            ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+            ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
         ];
 
         foreach ($launchRequests as $launchRequest) {
             $idea = $launchRequest->idea;
+            $currentStageName = 'Post-Launch Follow-up'; 
+            $currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
+            $nextStageName = $currentStageIndex + 1 < count($roadmapStages) ? $roadmapStages[$currentStageIndex + 1]['name'] : null;
+            $nextActor = $currentStageIndex + 1 < count($roadmapStages) ? $roadmapStages[$currentStageIndex + 1]['actor'] : null;
+            $progressPercentage = round((($currentStageIndex + 1) / count($roadmapStages)) * 100, 2);
+
             $launchRequest->update([
                 'status' => 'launched',
             ]);
-            $currentStage = "المتابعة بعد الإطلاق";
-            $index = array_search($currentStage, $roadmapStages);
-            $progress = round((($index + 1) / count($roadmapStages)) * 100, 2);
 
             $idea->update([
-                'status' => 'launched',
-                'roadmap_stage' => $currentStage,
+                'roadmap_stage' => $currentStageName,
             ]);
+
+            $stageDescription = "Stage executed by: " . $roadmapStages[$currentStageIndex]['actor'] .
+                                ($nextStageName ? " | Next stage: $nextStageName (executed by: $nextActor)" : " | Project in post-launch follow-up.");
 
             if ($roadmap = $idea->roadmap) {
                 $roadmap->update([
-                    'current_stage'       => $currentStage,
-                    'stage_description'   => 'تم إطلاق المشروع رسميًا وبدأت مرحلة المتابعة بعد الإطلاق.',
-                    'progress_percentage' => $progress,
-                    'last_update'         => now(),
-                    'next_step'           => $roadmapStages[$index + 1] ?? null,
+                    'current_stage' => $currentStageName,
+                    'stage_description' => $stageDescription,
+                    'progress_percentage' => $progressPercentage,
+                    'last_update' => now(),
+                    'next_step' => $nextStageName ? "Proceed to $nextStageName" : "Monitor project stabilization",
+                ]);
+            } else {
+                \App\Models\Roadmap::create([
+                    'idea_id' => $idea->id,
+                    'current_stage' => $currentStageName,
+                    'stage_description' => $stageDescription,
+                    'progress_percentage' => $progressPercentage,
+                    'last_update' => now(),
+                    'next_step' => $nextStageName ? "Proceed to $nextStageName" : "Monitor project stabilization",
                 ]);
             }
 
             Notification::create([
                 'user_id' => $idea->owner->id,
-                'title'   => "تم إطلاق مشروعك '{$idea->title}'",
-                'message' => "تم إطلاق المشروع تلقائيًا بتاريخ {$launchRequest->launch_date->format('Y-m-d H:i')}، وبدأت مرحلة المتابعة بعد الإطلاق.",
+                'title'   => "Your project '{$idea->title}' has been launched",
+                'message' => "The project was automatically launched on {$launchRequest->launch_date->format('Y-m-d H:i')}, entering the post-launch follow-up stage.",
                 'type'    => 'launch_launched',
                 'is_read' => false,
             ]);
@@ -69,14 +83,14 @@ class ProcessApprovedLaunches extends Command
             foreach ($idea->committee->committeeMember as $member) {
                 Notification::create([
                     'user_id' => $member->user_id,
-                    'title'   => "تم إطلاق مشروع '{$idea->title}'",
-                    'message' => 'تم إطلاق المشروع تلقائيًا حسب الموعد المحدد وبدأت مرحلة المتابعة بعد الإطلاق.',
+                    'title'   => "Project '{$idea->title}' launched",
+                    'message' => 'The project has been automatically launched according to the scheduled date and is now in the post-launch follow-up stage.',
                     'type'    => 'launch_launched',
                     'is_read' => false,
                 ]);
             }
 
-            $this->info("LaunchRequest #{$launchRequest->id} launched successfully.");
+            $this->info("LaunchRequest #{$launchRequest->id} processed successfully.");
         }
 
         return Command::SUCCESS;

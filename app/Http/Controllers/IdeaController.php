@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Validator;
 class IdeaController extends Controller
 {
     //اضافة فكرة 
-  public function store(Request $request)
+ public function store(Request $request)
 {
     $validator = Validator::make($request->all(), [
         'title' => 'required|string|max:255',
@@ -34,11 +34,10 @@ class IdeaController extends Controller
         return response()->json(['message' => 'يجب الموافقة على الشروط والأحكام قبل الإرسال.'], 403);
     }
 
-  $user = $request->user();
-if ($user->role !== 'idea_owner') {
-    return response()->json(['message' => 'المستخدم ليس مسجلاً كصاحب فكرة.'], 403);
-}
-
+    $user = $request->user();
+    if ($user->role !== 'idea_owner') {
+        return response()->json(['message' => 'المستخدم ليس مسجلاً كصاحب فكرة.'], 403);
+    }
     $idea = Idea::create([
         'owner_id' => $user->id,
         'title' => $request->title,
@@ -47,61 +46,64 @@ if ($user->role !== 'idea_owner') {
         'solution' => $request->solution,
         'target_audience' => $request->target_audience,
         'additional_notes' => $request->additional_notes,
-        'status' => 'pending',
-        'roadmap_stage' => 'مرحلة تقديم الفكرة',
-
+        'status' => 'submitted',
+        'roadmap_stage' => 'Idea Submission',
     ]);
-
     $committee = Committee::doesntHave('ideas')->first();
     if (!$committee) {
         $committee = Committee::withCount('ideas')->orderBy('ideas_count', 'asc')->first();
     }
     $idea->committee_id = $committee->id;
     $idea->save();
+$roadmapStages = [
+    ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+    ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+     ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+    ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+    ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+    ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+    ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+    ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
+];
+$initialStage = $roadmapStages[0];
+$initialStageIndex = 0;
+$progressPercentage = (($initialStageIndex + 1) / count($roadmapStages)) * 100;
+$nextStep = $initialStageIndex + 1 < count($roadmapStages) 
+    ? $roadmapStages[$initialStageIndex + 1]['name'] 
+    : null;
 
-    $roadmapStages = [
-        "تقديم الفكرة",
-        "التقييم الأولي",
-        "التخطيط المنهجي",
-        "التقييم المتقدم قبل التمويل",
-        "التمويل",
-        "التنفيذ والتطوير",
-        "الإطلاق",
-        "المتابعة بعد الإطلاق",
-        "استقرار المشروع وانفصاله عن المنصة",
-    ];
-
-    $initialStageName = 'تقديم الفكرة';
-    $initialStageIndex = array_search($initialStageName, $roadmapStages); 
-    $progressPercentage = (($initialStageIndex + 1) / count($roadmapStages)) * 100;
-    $nextStep = $initialStageIndex + 1 < count($roadmapStages) ? $roadmapStages[$initialStageIndex + 1] : null;
-
- $roadmap = Roadmap::create([
-    'idea_id' => $idea->id,
-    'current_stage' => $initialStageName,
-    'stage_description' => 'تم تسجيل الفكرة وهي الآن في المرحلة: ' . $initialStageName,
-    'progress_percentage' => $progressPercentage,
-    'last_update' => now(),
-    'next_step' => $nextStep,
+    $nextActor = $initialStageIndex + 1 < count($roadmapStages) 
+    ? $roadmapStages[$initialStageIndex + 1]['actor'] 
+    : null;
+$stageDescription = "Stage executed by: " . $initialStage['actor'] . 
+                    ($nextStep ? " | Next stage: $nextStep (executed by: $nextActor)" : "");
+$roadmap = Roadmap::create([
+    'idea_id'           => $idea->id,
+    'current_stage'     => $initialStage['name'],
+    'stage_description' => $stageDescription,
+    'progress_percentage'=> $progressPercentage,
+    'last_update'       => now(),
+    'next_step'         => $nextStep,
 ]);
-$initialMeetingDate = now()->addDays(2);
-$meeting = Meeting::create([
-    'idea_id' => $idea->id,
-    'meeting_date' => $initialMeetingDate,
-    'type' => 'initial',
-    'requested_by' => 'committee',
-    'meeting_link' => null,
-    'notes' => 'الاجتماع الأولي لتقييم الفكرة بعد التسجيل',
-]);
+  $initialMeetingDate = now()->addDays(2);
+    $meeting = Meeting::create([
+        'idea_id' => $idea->id,
+        'meeting_date' => $initialMeetingDate,
+        'type' => 'initial',
+        'requested_by' => 'committee',
+        'meeting_link' => null,
+        'notes' => 'الاجتماع الأولي لتقييم الفكرة بعد التسجيل',
+    ]);
     return response()->json([
         'message' => 'تم تسجيل الفكرة، إسنادها للجنة، وإنشاء خارطة الطريق بنجاح!',
         'idea' => $idea,
         'committee' => $committee,
         'roadmap' => $roadmap,
-         'meeting' => $meeting
-
+        'meeting' => $meeting
     ], 201);
 }
+
 
 
 
@@ -139,7 +141,7 @@ if ($idea->status === 'rejected') {
     $idea->update($validator->validated());
     if ($idea->status === 'needs_revision') {
         $idea->update([
-            'roadmap_stage' => 'بانتظار إعادة التقييم بعد التعديلات',
+        'roadmap_stage' => 'Awaiting re-evaluation after revisions',
         ]); }
     return response()->json([
         'message' => 'تم تعديل الفكرة بنجاح.',

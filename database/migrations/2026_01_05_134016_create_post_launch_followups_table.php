@@ -53,6 +53,10 @@ return new class extends Migration
         ->constrained('users')
         ->nullOnDelete();
 
+    $table->boolean('is_stable')->default(false);
+
+    $table->boolean('profit_distributed')->default(false);    
+
     $table->timestamps();
 });
 

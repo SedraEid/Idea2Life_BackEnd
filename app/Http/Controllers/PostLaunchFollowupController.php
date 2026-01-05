@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\LaunchProject;
+use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\PostLaunchFollowUp;
+use App\Models\Report;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -72,46 +74,80 @@ public function getMyPostLaunchFollowups(Request $request)//جلب المتاب�
     }
 
     //تابع التقييم الخاص بالمتباعة بعد الاطلاق للجنة 
-       public function evaluateFollowup(Request $request, $followupId)
-    {
-        $user = $request->user();
-        if (!$user->committeeMember) {
-            return response()->json(['message' => 'ليس لديك صلاحية لتقييم المتابعة.'], 403);
-        }
-        $followup = PostLaunchFollowUp::find($followupId);
-        if (!$followup) {
-            return response()->json(['message' => 'المتابعة المطلوبة غير موجودة.'], 404);
-        }
-        if (Carbon::now()->lt($followup->scheduled_date)) {
-            return response()->json([
-                'message' => 'لا يمكن تقييم المتابعة قبل تاريخها المحدد.'
-            ], 400);
-        }
-    $validator = Validator::make($request->all(), [
-    'performance_status' => 'required|string|in:excellent,stable,at_risk,failing',
-    'committee_decision' => 'required|string|in:continue,extra_support,pivot_required,terminate,graduate',
-    'marketing_support_given' => 'required|boolean',
-    'product_issue_detected' => 'required|boolean',
-    'actions_taken' => 'nullable|string',
-    'committee_notes' => 'nullable|string',
-]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-$status = $request->product_issue_detected ? 'issue_detected' : 'done';
-$followup->update(array_merge(
-    $validator->validated(),
-    [
-        'reviewed_by' => $user->id,
-        'status'      => $status
-    ]
-));
-        return response()->json([
-            'message' => 'تم تقييم متابعة المشروع بنجاح.',
-            'followup' => $followup
-        ]);
+      public function evaluateFollowup(Request $request, $followupId)
+{
+    $user = $request->user();
+    if (!$user->committeeMember) {
+        return response()->json(['message' => 'ليس لديك صلاحية لتقييم المتابعة.'], 403);
     }
+    $followup = PostLaunchFollowUp::with('launchRequest.idea')->find($followupId);
+
+    if (!$followup) {
+        return response()->json(['message' => 'المتابعة المطلوبة غير موجودة.'], 404);
+    }
+    if (Carbon::now()->lt($followup->scheduled_date)) {
+        return response()->json([
+            'message' => 'لا يمكن تقييم المتابعة قبل تاريخها المحدد.'
+        ], 400);
+    }
+    $meeting = Meeting::where('idea_id', $followup->launchRequest->idea_id)
+        ->where('type', 'post_launch_followup')
+        ->where('meeting_date', '<=', now())
+        ->latest('meeting_date')
+        ->first();
+
+    if (!$meeting) {
+        return response()->json([
+            'message' => 'لا يمكن تقييم المتابعة قبل عقد الاجتماع الخاص بها.'
+        ], 400);
+    }
+    $validator = Validator::make($request->all(), [
+        'performance_status'      => 'required|in:excellent,stable,at_risk,failing',
+        'committee_decision'      => 'required|in:continue,extra_support,pivot_required,terminate,graduate',
+        'marketing_support_given' => 'required|boolean',
+        'product_issue_detected'  => 'required|boolean',
+        'evaluation_score'        => 'nullable|numeric|min:0|max:100',
+        'strengths'               => 'nullable|string',
+        'weaknesses'              => 'nullable|string',
+        'recommendations'         => 'nullable|string',
+        'committee_notes'         => 'nullable|string',
+    ]);
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+    $status = $request->product_issue_detected ? 'issue_detected' : 'done';
+    $followup->update(array_merge(
+        $validator->validated(),
+        [
+            'reviewed_by' => $user->id,
+            'status'      => $status,
+            'actions_taken' => $request->recommendations, 
+            'committee_notes' => $request->committee_notes,
+        ]
+    ));
+    $report = Report::where('meeting_id', $meeting->id)
+        ->where('report_type', 'post_launch_followup')
+        ->first();
+    if (!$report) {
+        return response()->json([
+            'message' => 'التقرير المرتبط بالاجتماع غير موجود.'
+        ], 404);
+    }
+    $report->update([
+        'evaluation_score' => $request->evaluation_score,
+        'strengths'        => $request->strengths,
+        'weaknesses'       => $request->weaknesses,
+        'recommendations'  => $request->recommendations,
+        'description'      => $request->committee_notes,
+        'status'           => 'submitted',
+    ]);
+
+    return response()->json([
+        'message'  => 'تم تقييم المتابعة وإنشاء التقرير بنجاح.',
+        'followup' => $followup,
+        'report'   => $report
+    ]);
+}
 
 
 }

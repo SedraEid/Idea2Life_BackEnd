@@ -8,6 +8,7 @@ use App\Models\LaunchRequest;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
+use App\Models\Roadmap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -72,7 +73,7 @@ class LaunchRequestController extends Controller
 
     if ($roadmap = $idea->roadmap) {
         $roadmap->update([
-            'stage_description' => "طلب الإطلاق قدم وقيد المراجعة من قبل اللجنة."
+            'stage_description' => "Launch request submitted and under committee review."
         ]);
     }
 
@@ -130,21 +131,22 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
 {
     $user = $request->user();
     $committeeMember = $user->committeeMember;
+
     if (!$committeeMember) {
         return response()->json(['message' => 'غير مصرح لك.'], 403);
     }
 
-    $launchRequest = LaunchRequest::with(['idea.roadmap', 'idea.committee.committeeMember'])
+    $launchRequest = LaunchRequest::with(['idea.roadmap', 'idea.committee.committeeMember', 'idea.owner'])
         ->findOrFail($launchRequestId);
 
     if ($launchRequest->idea->committee_id !== $committeeMember->committee_id) {
         return response()->json(['message' => 'ليس لديك صلاحية.'], 403);
     }
 
- $meeting = $launchRequest->idea->meetings()
-    ->where('type', 'launch_request')
-    ->orderBy('meeting_date', 'desc')
-    ->first();
+    $meeting = $launchRequest->idea->meetings()
+        ->where('type', 'launch_request')
+        ->orderBy('meeting_date', 'desc')
+        ->first();
 
     if (!$meeting || $meeting->meeting_date->isFuture()) {
         return response()->json([
@@ -162,8 +164,9 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
     ]);
 
     DB::beginTransaction();
-    try {
 
+    try {
+        // تحديث حالة طلب الإطلاق
         $launchRequest->update([
             'status'        => $validated['decision'],
             'committee_notes'=> $validated['committee_notes'] ?? null,
@@ -172,6 +175,7 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
             'launch_date'   => $validated['launch_date'] ?? null,
         ]);
 
+        // إنشاء تقرير اللجنة
         Report::create([
             'idea_id'         => $launchRequest->idea_id,
             'meeting_id'      => $meeting->id,
@@ -184,78 +188,121 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
             'status'          => $validated['decision'],
         ]);
 
+        // زيادة النسخة إذا تمت الموافقة
         if ($validated['decision'] === 'approved') {
             $lastVersion = LaunchRequest::where('idea_id', $launchRequest->idea_id)->max('version') ?? 0;
             $launchRequest->update([
                 'version' => $lastVersion + 1
             ]);
-
-            $roadmapStages = [
-                "تقديم الفكرة",
-                "التقييم الأولي",
-                "التخطيط المنهجي",
-                "التقييم المتقدم قبل التمويل",
-                "التمويل",
-                "التنفيذ والتطوير",
-                "الإطلاق",
-                "المتابعة بعد الإطلاق",
-                "استقرار المشروع وانفصاله عن المنصة",
-            ];
-
-            $currentStage = "الإطلاق";
-            $index = array_search($currentStage, $roadmapStages);
-            $progress = round((($index + 1) / count($roadmapStages)) * 100, 2);
-
-            $launchRequest->idea->update([
-                'status'        => 'approved_for_launch',
-                'roadmap_stage' => $currentStage,
-            ]);
-
-            if ($roadmap = $launchRequest->idea->roadmap) {
-                $roadmap->update([
-                    'current_stage'       => $currentStage,
-'stage_description' =>
-'تمت الموافقة على طلب الإطلاق من اللجنة، والمشروع بانتظار موعد الإطلاق المحدد.',
-                    'progress_percentage' => $progress,
-                    'last_update'         => now(),
-                    'next_step'           => 'الالتزام بتوصيات تقرير الإطلاق والمتابعة بعد الإطلاق',
-                ]);
-            }
         }
+        $roadmapStages = [
+            ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+            ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+            ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+            ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+            ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+            ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+            ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+            ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+            ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
+        ];
+
+        $roadmapStages = [
+    ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+    ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+    ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+    ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+    ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+    ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+    ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+    ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+    ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
+];
+$currentStageName = 'Execution and Development';
+$currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
+switch ($validated['decision']) {
+    case 'approved':
+        $nextStageName = 'Launch';
+        $nextActor = $roadmapStages[array_search($nextStageName, array_column($roadmapStages, 'name'))]['actor'];
+        $stageDescription = "Stage executed by: " . $roadmapStages[$currentStageIndex]['actor'] .
+                            " | Launch approved by Committee | Next stage: $nextStageName (executed by: $nextActor)";
+        $nextStep =$nextStageName;
+        break;
+
+    case 'rejected':
+        $nextStageName = 'Execution and Development';
+        $nextActor = $roadmapStages[$currentStageIndex]['actor'];
+        $stageDescription = "Stage executed by: " . $roadmapStages[$currentStageIndex]['actor'] .
+                            " | Launch request rejected by Committee. Project cannot proceed.";
+        $nextStep = 'Revise the project or submit a new idea if desired';
+        break;
+
+    case 'needs_revision':
+        $nextStageName = 'Execution and Development';
+        $nextActor = $roadmapStages[$currentStageIndex]['actor'];
+        $stageDescription = "Stage executed by: " . $roadmapStages[$currentStageIndex]['actor'] .
+                            " | Launch request requires revision according to Committee feedback.";
+        $nextStep = 'Revise launch request and resubmit for approval';
+        break;
+}
+
+$progressPercentage = round((($currentStageIndex + 1) / count($roadmapStages)) * 100, 2);
+$launchRequest->idea->update(['roadmap_stage' => $currentStageName]);
+
+if ($roadmap = $launchRequest->idea->roadmap) {
+    $roadmap->update([
+        'current_stage' => $currentStageName,
+        'stage_description' => $stageDescription,
+        'progress_percentage' => $progressPercentage,
+        'last_update' => now(),
+        'next_step' => $nextStep,
+    ]);
+} else {
+    Roadmap::create([
+        'idea_id' => $launchRequest->idea->id,
+        'current_stage' => $currentStageName,
+        'stage_description' => $stageDescription,
+        'progress_percentage' => $progressPercentage,
+        'last_update' => now(),
+        'next_step' => $nextStep,
+    ]);
+}
+
 
         DB::commit();
+
+        Notification::create([
+            'user_id' => $launchRequest->idea->owner->id,
+            'title'   => 'Launch Request Evaluation Result',
+            'message' => 'Your launch request has been evaluated. Please check the committee report and follow the recommendations.',
+            'type'    => 'launch_evaluated',
+            'is_read' => false,
+        ]);
+
+        foreach ($launchRequest->idea->committee->committeeMember as $member) {
+            Notification::create([
+                'user_id' => $member->user_id,
+                'title'   => 'Launch Request Evaluated',
+                'message' => 'The launch request has been evaluated and the committee report has been documented.',
+                'type'    => 'launch_evaluated',
+                'is_read' => false,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Launch request evaluated and committee report documented successfully.',
+            'launch_request' => $launchRequest
+        ]);
 
     } catch (\Throwable $e) {
         DB::rollBack();
         return response()->json([
-            'message' => 'حدث خطأ أثناء تقييم طلب الإطلاق.',
+            'message' => 'An error occurred while evaluating the launch request.',
             'error'   => $e->getMessage()
         ], 500);
     }
-
-    Notification::create([
-        'user_id' => $launchRequest->idea->owner->id,
-        'title'   => 'نتيجة تقييم طلب الإطلاق',
-        'message' => 'تم تقييم طلب الإطلاق. يرجى الاطلاع على تقرير اللجنة والالتزام بالتوصيات.',
-        'type'    => 'launch_evaluated',
-        'is_read' => false,
-    ]);
-
-    foreach ($launchRequest->idea->committee->committeeMember as $member) {
-        Notification::create([
-            'user_id' => $member->user_id,
-            'title'   => 'تم تقييم طلب إطلاق',
-            'message' => 'تم الانتهاء من تقييم طلب الإطلاق وتوثيق تقرير اللجنة.',
-            'type'    => 'launch_evaluated',
-            'is_read' => false,
-        ]);
-    }
-
-    return response()->json([
-        'message' => 'تم تقييم طلب الإطلاق وتوثيق تقرير اللجنة بنجاح.',
-        'launch_request' => $launchRequest
-    ]);
 }
+
 
 
  public function requestFunding(Request $request, $idea_id)//طلب تمويل بعد الاطلاق 

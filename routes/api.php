@@ -13,9 +13,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
-use App\Http\Controllers\RoadmapController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
+use App\Http\Controllers\RoadmapController;
 use App\Models\PostLaunchFollowUp;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -212,3 +212,29 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
 //تقييم المتابعة بعد الاطلاق من قبل اللجنة 
 Route::middleware('auth:sanctum')->post('/post-launch-followups/{followup}/evaluate', [PostLaunchFollowupController::class, 'evaluateFollowup']);
+
+
+//عرض مراحل خارطة الطريق الخاصة بالمنصة 
+Route::middleware('auth:sanctum')->get('/platform/roadmap-stages', [RoadmapController::class, 'getAllPlatformStages']);
+
+
+
+//عرض التقارير ال initial
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/ideas/{idea_id}/first-stage-reports', [ReportController::class, 'ownerIdeaFirstStageReports']);
+});
+
+//عرض التقارير ال advanced
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/ideas/{idea_id}/advanced-stage-reports', [ReportController::class, 'ownerIdeaAdvancedReports']);
+});
+
+//عرض التقارير ال launch_evaluation
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/ideas/{idea_id}/launch-evaluation-reports', [ReportController::class, 'ownerLaunchEvaluationReports']);
+});
+
+//عرض التقارير ال post_launch_followup
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/ideas/{idea_id}/post-launch-reports', [ReportController::class, 'ownerPostLaunchReports']);
+});

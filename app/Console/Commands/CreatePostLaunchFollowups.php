@@ -21,7 +21,7 @@ class CreatePostLaunchFollowups extends Command
         $now = Carbon::now();
 
         $launchRequests = LaunchRequest::with(['postLaunchFollowups', 'idea.committee.committeeMember', 'idea.owner'])
-            ->whereIn('status', ['approved_for_launch', 'launched'])
+            ->whereIn('status', ['approved', 'launched'])
             ->get()
             ->filter(fn($launch) => $launch->postLaunchFollowups->isEmpty());
 

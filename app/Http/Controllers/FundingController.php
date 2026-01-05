@@ -74,29 +74,44 @@ $funding = Funding::create([
     ]);
 
     if ($idea->roadmap) {
-        $stages = [
-            "تقديم الفكرة",
-            "التقييم الأولي",
-            "التخطيط المنهجي",
-            "التقييم المتقدم قبل التمويل",
-            "التمويل",
-            "التنفيذ والتطوير",
-            "الإطلاق",
-            "المتابعة بعد الإطلاق",
-            "استقرار المشروع وانفصاله عن المنصة",
-        ];
-        $currentStageIndex = array_search("التمويل", $stages);
-        $progressPercentage = (($currentStageIndex + 1) / count($stages)) * 100;
-        $idea->roadmap->update([
-            'current_stage' => 'التمويل',
-            'stage_description' => 'تم إرسال طلب التمويل وهو الآن قيد المراجعة من قبل اللجنة.',
-            'progress_percentage' => $progressPercentage,
-            'last_update' => now(),
-            'next_step' => 'انتظار قرار اللجنة بخصوص التمويل',
-        ]);
-    }
-    $idea->update(['roadmap_stage' => 'طلب التمويل قيد المراجعة']);
-    return response()->json([
+    $roadmapStages = [
+        ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+        ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+        ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner (prepares the business plan) + Committee (evaluates and supervises)'],
+        ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+        ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+        ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+        ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+        ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+        ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
+    ];
+
+    $currentStageName = 'Funding';
+    $currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
+    $nextStageName = $currentStageIndex + 1 < count($roadmapStages) 
+        ? $roadmapStages[$currentStageIndex + 1]['name'] 
+        : null;
+    $nextActor = $currentStageIndex + 1 < count($roadmapStages) 
+        ? $roadmapStages[$currentStageIndex + 1]['actor'] 
+        : null;
+
+    $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
+
+    $stageDescription = "Funding request submitted; currently under evaluation by Committee and Investor";
+
+    $idea->roadmap->update([
+        'current_stage' => $currentStageName,
+        'stage_description' => $stageDescription,
+        'progress_percentage' => $progressPercentage,
+        'last_update' => now(),
+        'next_step' => 'Waiting for committee and investor decision',
+    ]);
+}
+
+$idea->update([
+    'roadmap_stage' => $currentStageName
+]);
+return response()->json([
         'message' => 'تم تقديم طلب التمويل بنجاح، وتم إنشاء الاجتماع وسجل التمويل وتحديث خارطة الطريق.',
         'funding' => $funding,
         'meeting' => $meeting,
@@ -131,37 +146,51 @@ public function cancelFundingRequest(Request $request, $fundingId)//الغاء �
     $meeting = $idea->meetings()->where('type', 'funding_request')->latest()->first();
     if ($meeting) {
         $meeting->update([
-            'status' => 'cancelled',
             'meeting_date' => now(),
             'notes' => 'تم إلغاء طلب التمويل من قبل صاحب الفكرة.',
         ]);
     }
     if ($idea->roadmap) {
-        $stages = [
-            "تقديم الفكرة",
-            "التقييم الأولي",
-            "التخطيط المنهجي",
-            "التقييم المتقدم قبل التمويل",
-            "التمويل",
-            "التنفيذ والتطوير",
-            "الإطلاق",
-            "المتابعة بعد الإطلاق",
-            "استقرار المشروع وانفصاله عن المنصة",
-        ];
-        $currentStageIndex = array_search("التمويل", $stages);
-        $progressPercentage = (($currentStageIndex + 0.8) / count($stages)) * 100;
-        $currentStage = $stages[$currentStageIndex];
+    $roadmapStages = [
+        ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+        ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+        ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+        ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+        ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+        ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+        ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+        ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+        ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
+    ];
 
-        $idea->roadmap->update([
-            'current_stage' => $currentStage,
-            'stage_description' => 'تم إلغاء طلب التمويل من قبل صاحب الفكرة.',
-            'progress_percentage' => $progressPercentage,
-            'last_update' => now(),
-            'next_step' => 'يمكن إعادة تقديم طلب التمويل أو الانتقال لمرحلة التطوير',
-        ]);
-    }
+    $currentStageName = 'Funding';
+    $currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
+    $nextStageName = $currentStageIndex + 1 < count($roadmapStages) 
+        ? $roadmapStages[$currentStageIndex + 1]['name'] 
+        : null;
+    $nextActor = $currentStageIndex + 1 < count($roadmapStages) 
+        ? $roadmapStages[$currentStageIndex + 1]['actor'] 
+        : null;
 
-    $idea->update(['roadmap_stage' => $idea->roadmap?->current_stage ?? null]);
+    $progressPercentage = (($currentStageIndex + 0.8) / count($roadmapStages)) * 100;
+
+    $stageDescription = "Funding request was cancelled by the Idea Owner" .
+                        ($nextStageName ? " | Next stage: $nextStageName (executed by: $nextActor)" : "");
+
+    $idea->roadmap->update([
+        'current_stage' => $currentStageName,
+        'stage_description' => $stageDescription,
+        'progress_percentage' => $progressPercentage,
+        'last_update' => now(),
+        'next_step' => 'You can resubmit the funding request or move to the Execution stage',
+    ]);
+}
+
+// تحديث حالة المرحلة بالفكرة
+$idea->update([
+    'roadmap_stage' => $idea->roadmap?->current_stage ?? null,
+]);
+
     $committeeMembers = CommitteeMember::where('committee_id', $idea->committee_id)
         ->where('user_id', '!=', $user->id)
         ->get();
@@ -316,38 +345,58 @@ $ownerWallet    = $ownerUser?->wallet;
     ]);
 }
  $roadmapStages = [
-            "تقديم الفكرة",
-            "التقييم الأولي",
-            "التخطيط المنهجي",
-            "التقييم المتقدم قبل التمويل",
-            "التمويل",
-            "التنفيذ والتطوير",
-            "الإطلاق",
-            "المتابعة بعد الإطلاق",
-            "استقرار المشروع وانفصاله عن المنصة",
-        ];
+    ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
+    ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
+    ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
+    ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
+    ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
+    ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
+    ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
+    ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
+    ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
+];
 
-        $currentStageIndex = array_search("التمويل", $roadmapStages);
-        if ($validated['is_approved']) {
-            $stageDescription = "تمت الموافقة على التمويل والمبلغ المحدد: " . $funding->approved_amount;
-            $nextStep = $roadmapStages[$currentStageIndex + 1] ?? 'لا توجد مراحل لاحقة';
-            $progressPercentage = (($currentStageIndex + 1) / count($roadmapStages)) * 100;
-        } else {
-            $stageDescription = "تم رفض طلب التمويل؛ يمكن إعادة تقديم الطلب بعد تعديل الخطة.";
-            $nextStep = "إعادة تقديم طلب التمويل";
-            $progressPercentage = (($currentStageIndex + 0.2) / count($roadmapStages)) * 100;
-        }
-        if ($idea->roadmap) {
-            $idea->roadmap->update([
-                'current_stage'       => "التمويل",
-                'stage_description'   => $stageDescription,
-                'progress_percentage' => $progressPercentage,
-                'last_update'         => now(),
-                'next_step'           => $nextStep,
-            ]);
-        }
-        $idea->update(['roadmap_stage' => "التمويل"]);
-        Notification::create([
+$currentStageName = 'Funding';
+$currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
+$nextStageName = $currentStageIndex + 1 < count($roadmapStages) 
+    ? $roadmapStages[$currentStageIndex + 1]['name'] 
+    : null;
+
+$nextActor = $currentStageIndex + 1 < count($roadmapStages) 
+    ? $roadmapStages[$currentStageIndex + 1]['actor'] 
+    : null;
+$progressPercentage = $validated['is_approved']
+    ? (($currentStageIndex + 1) / count($roadmapStages)) * 100
+    : (($currentStageIndex + 0.2) / count($roadmapStages)) * 100;
+
+$stageDescription = $validated['is_approved']
+    ? "تمت الموافقة على التمويل والمبلغ المحدد: {$funding->approved_amount}" .
+      ($nextStageName ? " | Next stage: $nextStageName (executed by: $nextActor)" : "")
+    : "تم رفض طلب التمويل؛ يمكن إعادة تقديم الطلب " .
+      ($nextStageName ? " | Next stage: $nextStageName (executed by: $nextActor)" : "");
+
+if ($idea->roadmap) {
+    $idea->roadmap->update([
+        'current_stage'       => $currentStageName,
+        'stage_description'   => $stageDescription,
+        'progress_percentage' => $progressPercentage,
+        'last_update'         => now(),
+        'next_step'           => $nextStageName ?? "إعادة تقديم طلب التمويل",
+    ]);
+} else {
+    $roadmap = Roadmap::create([
+        'idea_id'             => $idea->id,
+        'current_stage'       => $currentStageName,
+        'stage_description'   => $stageDescription,
+        'progress_percentage' => $progressPercentage,
+        'last_update'         => now(),
+        'next_step'           => $nextStageName ?? "إعادة تقديم طلب التمويل",
+    ]);
+}
+
+// تحديث حالة المرحلة في الجدول الرئيسي
+$idea->update(['roadmap_stage' => $currentStageName]);
+       Notification::create([
             'user_id' => $idea->owner?->id,
             'title'   => 'تقييم طلب التمويل',
             'message' => 'تم تقييم طلب التمويل لفكرتك "' . $idea->title . '". الحالة: ' .
