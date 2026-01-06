@@ -202,7 +202,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // عرض كل المتابعات بعد الإطلاق لصاحب الفكرة
 Route::middleware(['auth:sanctum'])->group(function () {
-    Route::get('/my-post-launch-followups', [PostLaunchFollowupController::class, 'getMyPostLaunchFollowups']);
+    Route::get('/ideas/{idea_id}/post-launch-followups', [PostLaunchFollowupController::class, 'getMyIdeaPostLaunchFollowups']);
 });
 
 //عرض كل المتابعات بعد الاطلاق للجنة المشرفة 
@@ -210,12 +210,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/my-post-launch-followups-commitee', [PostLaunchFollowupController::class, 'getCommitteePostLaunchFollowups']);
 });
 
-//تقييم المتابعة بعد الاطلاق من قبل اللجنة 
-Route::middleware('auth:sanctum')->post('/post-launch-followups/{followup}/evaluate', [PostLaunchFollowupController::class, 'evaluateFollowup']);
 
 
 //عرض مراحل خارطة الطريق الخاصة بالمنصة 
-Route::middleware('auth:sanctum')->get('/platform/roadmap-stages', [RoadmapController::class, 'getAllPlatformStages']);
+Route::get('/platform/roadmap-stages', [RoadmapController::class, 'getAllPlatformStages']);
 
 
 
@@ -238,3 +236,23 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/ideas/{idea_id}/post-launch-reports', [ReportController::class, 'ownerPostLaunchReports']);
 });
+
+//صاحب الفكرة يملا الخانات الخاصة بالمتابعة بعد الالطلاق
+Route::middleware('auth:sanctum')->post(
+    '/post-launch-followups/{followupId}/owner-update',
+    [PostLaunchFollowupController::class, 'updateFollowupByOwner']
+);
+
+//تقييم اللجنة بعد الاطلاق
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/post-launch-followups/{followup_id}/submit', 
+        [PostLaunchFollowupController::class, 'committeeSubmitFollowup']
+    );
+});
+
+//رد صاحب الفكرة على تقييم الجنة بشان المتباعة بعد الاطلاق
+
+Route::middleware('auth:sanctum')->post(
+    '/post-launch-followups/{followup}/acknowledge',
+    [PostLaunchFollowupController::class, 'acknowledgePostLaunchFollowup']
+);

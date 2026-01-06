@@ -10,21 +10,43 @@ class PostLaunchFollowUp extends Model
     protected $table = 'post_launch_followups';
     use HasFactory;
     
-    protected $fillable = [
+   protected $fillable = [
         'launch_request_id',
         'followup_phase',
         'scheduled_date',
         'status',
+
+        'active_users',
+        'revenue',
+        'growth_rate',
+
         'performance_status',
+        'risk_level',
+        'risk_description',
+
         'committee_decision',
+
+        'owner_response',
+        'owner_acknowledged',
+
         'marketing_support_given',
         'product_issue_detected',
+
         'actions_taken',
         'committee_notes',
-        'reviewed_by',
-        'is_stable',
-        'profit_distributed'
 
+        'is_stable',
+        'profit_distributed',
+        'graduation_date',
+
+        'reviewed_by',
+    ];
+     protected $casts = [
+        'owner_acknowledged'      => 'boolean',
+        'marketing_support_given' => 'boolean',
+        'product_issue_detected'  => 'boolean',
+        'is_stable'               => 'boolean',
+        'profit_distributed'      => 'boolean',
     ];
 
         public function launchRequest()

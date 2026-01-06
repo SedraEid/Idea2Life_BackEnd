@@ -63,5 +63,9 @@ public function ideas()
     return $this->hasMany(PostLaunchFollowup::class,'reviewed_by');
 }
 
+    public function profitDistributions()
+    {
+        return $this->hasMany(ProfitDistribution::class);
+    }
 
 }

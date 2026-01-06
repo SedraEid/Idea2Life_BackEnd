@@ -25,12 +25,19 @@ return new class extends Migration
     $table->enum('status', ['pending','done','issue_detected'])
         ->default('pending');
 
+    $table->unsignedInteger('active_users')->nullable();
+    $table->decimal('revenue', 12, 2)->nullable();
+    $table->decimal('growth_rate', 5, 2)->nullable(); 
+
     $table->enum('performance_status', [
         'excellent',
         'stable',
         'at_risk',
         'failing'
     ])->nullable();
+
+    $table->enum('risk_level', ['low','medium','high'])->nullable();
+    $table->text('risk_description')->nullable();
 
     $table->enum('committee_decision', [
         'continue',
@@ -40,22 +47,24 @@ return new class extends Migration
         'graduate'
     ])->nullable();
 
-    $table->boolean('marketing_support_given')->default(false);
 
+    $table->text('owner_response')->nullable();
+    $table->boolean('owner_acknowledged')->default(false);
+
+    $table->boolean('marketing_support_given')->default(false);
     $table->boolean('product_issue_detected')->default(false);
 
     $table->text('actions_taken')->nullable();
-
     $table->text('committee_notes')->nullable();
+
+    $table->boolean('is_stable')->default(false);
+    $table->boolean('profit_distributed')->default(false);
+    $table->date('graduation_date')->nullable();
 
     $table->foreignId('reviewed_by')
         ->nullable()
         ->constrained('users')
         ->nullOnDelete();
-
-    $table->boolean('is_stable')->default(false);
-
-    $table->boolean('profit_distributed')->default(false);    
 
     $table->timestamps();
 });

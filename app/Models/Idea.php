@@ -71,7 +71,23 @@ class Idea extends Model
     {
         return $this->hasMany(LaunchRequest::class);
     }
+    public function profitDistributions()
+    {
+        return $this->hasMany(ProfitDistribution::class);
+    }
 
+
+    public function postLaunchFollowups()
+{
+    return $this->hasManyThrough(
+        \App\Models\PostLaunchFollowUp::class,
+        \App\Models\LaunchRequest::class,
+        'idea_id',          
+        'launch_request_id', 
+        'id',              
+        'id'                
+    );
+}
 
 
 

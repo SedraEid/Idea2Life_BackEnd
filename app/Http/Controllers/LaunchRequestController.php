@@ -195,17 +195,6 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
                 'version' => $lastVersion + 1
             ]);
         }
-        $roadmapStages = [
-            ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
-            ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
-            ['name' => 'Systematic Planning / Business Plan Preparation', 'actor' => 'Idea Owner'],
-            ['name' => 'Advanced Evaluation Before Funding', 'actor' => 'Committee'],
-            ['name' => 'Funding', 'actor' => 'Idea Owner (Funding Request) + Committee / Investor'],
-            ['name' => 'Execution and Development', 'actor' => 'Idea Owner (Implementation) + Committee (Stage Evaluation)'],
-            ['name' => 'Launch', 'actor' => 'Idea Owner + Committee'],
-            ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
-            ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
-        ];
 
         $roadmapStages = [
     ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],

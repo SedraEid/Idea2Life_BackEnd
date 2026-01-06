@@ -14,13 +14,9 @@ class Kernel extends ConsoleKernel
 
     protected function schedule(Schedule $schedule): void
     {
-    $schedule->command('notify:upcoming-meetings')->everyMinute()->withoutOverlapping();
     $schedule->command('launch:process-approved')->everyMinute()->withoutOverlapping();
-        $schedule->command('launch:create-followups')->everyMinute()->withoutOverlapping();
-
-
-
-
+    $schedule->command('launch:create-followups')->everyMinute()->withoutOverlapping();
+    $schedule->command('notify:upcoming-meetings')->everyMinute()->withoutOverlapping();
 
     }
 
