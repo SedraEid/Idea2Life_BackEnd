@@ -196,6 +196,7 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
             ]);
         }
 
+
         $roadmapStages = [
     ['name' => 'Idea Submission', 'actor' => 'Idea Owner'],
     ['name' => 'Initial Evaluation', 'actor' => 'Committee'],
@@ -207,11 +208,11 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
     ['name' => 'Post-Launch Follow-up', 'actor' => 'Idea Owner + Committee'],
     ['name' => 'Project Stabilization / Platform Separation', 'actor' => 'Idea Owner (Separation Request) + Committee (Approval of Stabilization)'],
 ];
-$currentStageName = 'Execution and Development';
+$currentStageName = 'Launch';
 $currentStageIndex = array_search($currentStageName, array_column($roadmapStages, 'name'));
 switch ($validated['decision']) {
     case 'approved':
-        $nextStageName = 'Launch';
+        $nextStageName = 'Post-Launch Follow-up';
         $nextActor = $roadmapStages[array_search($nextStageName, array_column($roadmapStages, 'name'))]['actor'];
         $stageDescription = "Stage executed by: " . $roadmapStages[$currentStageIndex]['actor'] .
                             " | Launch approved by Committee | Next stage: $nextStageName (executed by: $nextActor)";

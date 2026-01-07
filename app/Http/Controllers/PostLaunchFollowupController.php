@@ -279,7 +279,6 @@ public function committeeSubmitFollowup(Request $request, $followup_id)
         'marketing_support_given'=> 'nullable|boolean',
         'product_issue_detected' => 'nullable|boolean',
         'is_stable'              => 'nullable|boolean',
-        'profit_distributed'     => 'nullable|boolean',
         'graduation_date'        => 'nullable|date',
     ]);
 
@@ -459,6 +458,44 @@ public function acknowledgePostLaunchFollowup(Request $request, PostLaunchFollow
         'followup' => $followup,
     ]);
 }
+
+//يعرض لي المشارع الناجحة التي انفصلت عن المنصة 
+public function getGraduatedProjects(Request $request)
+{
+    $followups = PostLaunchFollowUp::where('committee_decision', 'graduate')
+        ->whereNotNull('graduation_date')
+        ->with([
+            'launchRequest.idea.owner:id,name',
+            'launchRequest.idea.committee:id,committee_name'
+        ])
+        ->get();
+
+    $projects = $followups->map(function ($followup) {
+        $idea = $followup->launchRequest->idea;
+        return [
+            'idea_id'      => $idea->id,
+            'title'        => $idea->title,
+            'owner'        => [
+                'id'   => $idea->owner->id,
+                'name' => $idea->owner->name,
+            ],
+            'committee'    => $idea->committee ? [
+                'id'   => $idea->committee->id,
+                'name' => $idea->committee->committee_name,
+            ] : null,
+            'graduation_date' => $followup->graduation_date,
+            'profit_distributed' => $followup->profit_distributed,
+        ];
+    });
+
+    return response()->json([
+        'message' => 'تم جلب جميع المشاريع التي انفصلت عن المنصة بنجاح.',
+        'total'   => $projects->count(),
+        'data'    => $projects,
+    ]);
+}
+
+
 
 
 

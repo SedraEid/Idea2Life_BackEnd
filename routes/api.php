@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusinessPlanController;
+use App\Http\Controllers\ContentController;
 use App\Http\Controllers\FundingController;
 use App\Http\Controllers\GanttChartController;
 use App\Http\Controllers\IdeaController;
@@ -251,8 +252,38 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 //رد صاحب الفكرة على تقييم الجنة بشان المتباعة بعد الاطلاق
-
 Route::middleware('auth:sanctum')->post(
     '/post-launch-followups/{followup}/acknowledge',
     [PostLaunchFollowupController::class, 'acknowledgePostLaunchFollowup']
 );
+
+
+
+//نعرض المشاريع الناجحة التي استقرت و انفصلت عن المنصة 
+Route::get('/graduated-projects', [PostLaunchFollowupController::class, 'getGraduatedProjects']);
+
+
+
+
+
+
+ //////////////////////Admin_dashboard
+
+// يعطي اجمالي عدد الافكار والمستخدمين للادمن
+Route::get('/admin/stats', [ContentController::class, 'getStats']);
+//يعرض الافكار للادمن 
+Route::get('/admin/ideas', [ContentController::class, 'indexideas']);
+// يعرض كل المستخدمين 
+Route::get('/admin/users', [ContentController::class, 'allUsers']);
+//جلب جميع اللجان مع الأفكار التابعة لها
+Route::get('/admin/committees', [ContentController::class, 'allCommittees']);
+//يعرض اصحاب الافكار
+Route::get('/admin/ideaowners', [ContentController::class, 'allIdeaOwners']);
+//المعاملات المالية
+Route::get('/admin/all-transactions', [ContentController::class, 'getAllTransactions']);
+//اضافة محتويات الموقع
+Route::post('/admin/contents/store', [ContentController::class, 'store']);
+//حذف محتويات الموقع
+Route::delete('/admin/contents/destroy/{id}', [ContentController::class, 'destroy']);
+//عرض محتويات الموقع
+Route::get('/admin/contents/index', [ContentController::class, 'index']);
