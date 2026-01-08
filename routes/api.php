@@ -161,6 +161,21 @@ Route::middleware('auth:sanctum')->get('/ideas/{idea_id}/penalty', [GanttChartCo
 Route::middleware('auth:sanctum')->post('/gantt/{idea_id}/pay-penalty', [GanttChartController::class, 'payPenaltyForPhase']);
 
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////عرض انو صاحب الفكرة دفع الغرامة المالية للجنة 
+Route::get('/ideas/{idea}/penalty-payment', [GanttChartController::class, 'showPenaltyPayment'])
+    ->middleware('auth:sanctum'); 
+
+
+
+////////////////////////////////////////////قرار للجنة بارجاع المبلغ المالي يلي دفعو صاحب الفكرة 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/ideas/{idea}/refund-penalty', [GanttChartController::class, 'refundPenalty']);
+});
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
 Route::middleware('auth:sanctum')->group(function () {//طلب التمويل لمرحلة او لتاسك 
     Route::post('/funding/request/gantt/{gantt_id}', [GanttChartController::class, 'requestFundingGantt']);
     Route::post('/funding/request/task/{task_id}', [GanttChartController::class, 'requestFundingTask']);
@@ -235,7 +250,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 //عرض التقارير ال post_launch_followup
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/ideas/{idea_id}/post-launch-reports', [ReportController::class, 'ownerPostLaunchReports']);
+    Route::get('/ideas/{idea_id}/post-launch-reports/{followup_id}', [ReportController::class, 'ownerPostLaunchReportByFollowup']);
 });
 
 //صاحب الفكرة يملا الخانات الخاصة بالمتابعة بعد الالطلاق
@@ -261,6 +276,10 @@ Route::middleware('auth:sanctum')->post(
 
 //نعرض المشاريع الناجحة التي استقرت و انفصلت عن المنصة 
 Route::get('/graduated-projects', [PostLaunchFollowupController::class, 'getGraduatedProjects']);
+
+
+////////////////
+
 
 
 

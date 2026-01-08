@@ -546,7 +546,8 @@ public function getPhaseEvaluation(Request $request, $idea_id, $gantt_id)
         ], 200);
     }
     return response()->json([
-        'message' => "تم الوصول إلى حد الغرامة: لديك {$badPhasesCount} مراحل سيئة، ويجب دفع مبلغ جزائي قدره {$penaltyAmount} ليتم متابعة المشروع.",
+'message' => "تم الوصول إلى حد الغرامة: لديك {$badPhasesCount} مراحل سيئة، ويجب دفع مبلغ جزائي قدره {$penaltyAmount}. بعد دفع المبلغ الجزائي، سيتم استئناف المشروع ووضعه تحت المتابعة. سيقوم فريق اللجنة بمراقبة أدائك في المراحل القادمة من حيث الالتزام وجودة التنفيذ وتحقيق متطلبات كل مرحلة. استنادًا إلى تقييم الأداء، تحتفظ اللجنة بحقها في اتخاذ القرار بشأن إرجاع كامل المبلغ أو جزء منه، أو عدم الإرجاع، وفق ما تراه مناسبًا.",
+
         'bad_phases' => $badPhases->pluck('phase_name'),
         'penalty_amount' => $penaltyAmount,
     ]);
@@ -663,6 +664,135 @@ public function payPenaltyForPhase(Request $request, $idea_id)
         'message' => "تم دفع الغرامة ({$amount}) بنجاح وتم استئناف المشروع.",
     ]);
 }
+
+//عرض المبلغ الجزائي يلي دفعو صاحب الفكرة للجنة 
+public function showPenaltyPayment(Idea $idea, Request $request)
+{
+    $committeeUser = $request->user();
+    $committeeMember = $idea->committee->committeeMember
+        ->where('user_id', $committeeUser->id)
+        ->first();
+
+    if (!$committeeMember) {
+        return response()->json(['message' => 'ليس لديك صلاحية عرض معاملات الغرامة.'], 403);
+    }
+
+    $penaltyAmount = 10000;
+    $paymentTransaction = WalletTransaction::where('sender_id', $idea->owner_id)
+        ->where('amount', $penaltyAmount)
+        ->where('transaction_type', 'transfer')
+        ->where('status', 'completed')
+        ->where('notes', 'تم دفع المبلغ الجزائي بعد الوصول لثلاث مراحل سيئة.')
+        ->first();
+
+    if (!$paymentTransaction) {
+        return response()->json(['message' => 'لم يتم دفع الغرامة بعد أو المعاملة غير موجودة.'], 404);
+    }
+
+    return response()->json([
+        'message' => 'تم العثور على دفع الغرامة.',
+        'transaction' => [
+            'id' => $paymentTransaction->id,
+            'sender_id' => $paymentTransaction->sender_id,
+            'receiver_id' => $paymentTransaction->receiver_id,
+            'amount' => $paymentTransaction->amount,
+            'status' => $paymentTransaction->status,
+            'notes' => $paymentTransaction->notes,
+            'created_at' => $paymentTransaction->created_at,
+        ]
+    ]);
+}
+
+
+
+
+
+//ارجاع المبلغ الجزائي لصاحب الفكرة من قبل اللجنة 
+public function refundPenalty(Request $request, Idea $idea)
+{
+    $committeeUser = $request->user();
+    // تحقق أن المستخدم عضو لجنة
+    $committeeMember = $idea->committee->committeeMember->where('user_id', $committeeUser->id)->first();
+    if (!$committeeMember) {
+        return response()->json(['message' => 'ليس لديك صلاحية اتخاذ قرار بالإرجاع.'], 403);
+    }
+      if ($idea->penalty_refunded) {
+        return response()->json(['message' => 'تم إرجاع المبلغ الجزائي مسبقاً. لا يمكن إرجاعه مرة أخرى.'], 422);
+    }
+
+    $penaltyAmount = 10000;
+    $investor = $idea->committee->committeeMember->where('role_in_committee', 'investor')->first();
+    if (!$investor) {
+        return response()->json(['message' => 'لا يوجد مستثمر مرتبط بهذه الفكرة.'], 404);
+    }
+    $investorId = $investor->user_id;
+
+    $paymentTransaction = WalletTransaction::where('sender_id', $idea->owner_id)
+        ->where('receiver_id', $investorId)
+        ->where('amount', $penaltyAmount)
+        ->where('transaction_type', 'transfer')
+        ->where('status', 'completed')
+        ->where('notes', 'تم دفع المبلغ الجزائي بعد الوصول لثلاث مراحل سيئة.')
+        ->first();
+
+    if (!$paymentTransaction) {
+        return response()->json(['message' => 'لم يتم دفع الغرامة بعد أو المعاملة غير صحيحة.'], 422);
+    }
+
+    $ownerWallet = Wallet::where('user_id', $idea->owner_id)->lockForUpdate()->first();
+    $investorWallet = Wallet::where('user_id', $investorId)->lockForUpdate()->first();
+
+    $validated = $request->validate([
+        'refund_option' => 'required|in:full,half'
+    ]);
+
+    $refundOption = $validated['refund_option'];
+    $refundAmount = $refundOption === 'half' ? $penaltyAmount / 2 : $penaltyAmount;
+
+    if ($investorWallet->balance < $refundAmount) {
+        return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإرجاع المبلغ.'], 422);
+    }
+
+    DB::transaction(function () use ($ownerWallet, $investorWallet, $refundAmount, $idea, $refundOption) {
+        $investorWallet->decrement('balance', $refundAmount);
+
+        $ownerWallet->increment('balance', $refundAmount);
+        WalletTransaction::create([
+            'wallet_id' => $ownerWallet->id,
+            'sender_id' => $investorWallet->id,
+            'receiver_id' => $ownerWallet->id,
+            'transaction_type' => 'refund',
+            'amount' => $refundAmount,
+            'status' => 'completed',
+            'beneficiary_role' => 'creator',
+            'notes' => $refundOption === 'half'
+                ? 'تم إرجاع نصف المبلغ الجزائي بعد مراجعة الأداء.'
+                : 'تم إرجاع كامل المبلغ الجزائي بعد مراجعة الأداء.'
+        ]);
+        $idea->roadmap_stage = 'execution_and_development';
+                $idea->penalty_refunded = true;
+
+        $idea->save();
+
+        Notification::create([
+            'user_id' => $idea->owner->id,
+            'title' => 'تم إرجاع المبلغ الجزائي',
+            'message' => $refundOption === 'half'
+                ? "تم إرجاع نصف المبلغ الجزائي ($refundAmount) بعد مراجعة الأداء."
+                : "تم إرجاع كامل المبلغ الجزائي ($refundAmount) بعد مراجعة الأداء.",
+            'type' => 'success',
+            'is_read' => false
+        ]);
+    });
+    $message = $refundOption === 'half'
+        ? "تم إرجاع نصف المبلغ الجزائي ($refundAmount) بعد مراجعة الأداء. باقي المبلغ يحتفظ به حسب تقييم اللجنة."
+        : "تم إرجاع كامل المبلغ الجزائي ($refundAmount) بعد مراجعة الأداء.";
+
+    return response()->json(['message' => $message]);
+}
+
+
+
 //طلب تمويل من قبل صاحب الفكرة ضمن اي مرحلة   
 public function requestFundingGantt(Request $request, $gantt_id)
 {

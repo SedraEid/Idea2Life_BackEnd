@@ -19,7 +19,9 @@ class Idea extends Model
         'additional_notes',
         'status',
         'roadmap_stage',
-        'initial_evaluation_score'
+        'initial_evaluation_score',
+        'penalty_refunded',
+        'withdrawn'
     ];
 
     public function owner()

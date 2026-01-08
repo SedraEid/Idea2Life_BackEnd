@@ -100,8 +100,6 @@ public function getMyIdeaPostLaunchFollowups(Request $request, $idea_id)
  public function getCommitteePostLaunchFollowups(Request $request)
 {
     $user = $request->user();
-
-    // تحقق أن المستخدم عضو لجنة
     if (!$user->committeeMember) {
         return response()->json([
             'message' => 'المستخدم ليس عضو لجنة.'
@@ -292,6 +290,16 @@ public function committeeSubmitFollowup(Request $request, $followup_id)
         'report_type' => 'post_launch_followup',
         'meeting_id'  => $meeting->id,
     ])->first();
+    if (!$report) {
+    return response()->json([
+        'message' => 'لا يوجد تقرير متابعة مرتبط بهذا الاجتماع.'
+    ], 404);
+}
+if (!str_contains($report->description, $followup->followup_phase)) {
+    return response()->json([
+        'message' => 'لا يمكن انشاء تقرير .'
+    ], 422);
+}
 
     if ($report) {
         $report->update([

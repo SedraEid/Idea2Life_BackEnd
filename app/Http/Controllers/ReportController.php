@@ -7,6 +7,7 @@ use App\Models\Evaluation;
 use App\Models\Idea;
 use App\Models\Meeting;
 use App\Models\Notification;
+use App\Models\PostLaunchFollowUp;
 use App\Models\Report;
 use App\Models\Roadmap;
 use App\Models\Task;
@@ -546,65 +547,71 @@ public function ownerLaunchEvaluationReports(Request $request, $idea_id)
 }
 
 //عرض التقارير ال post_launch_followup
-public function ownerPostLaunchReports(Request $request, $idea_id)
+public function ownerPostLaunchReportByFollowup(Request $request, $idea_id, $followup_id)
 {
     $user = $request->user();
-
     if ($user->role !== 'idea_owner') {
-        return response()->json([
-            'message' => 'غير مصرح لك.'
-        ], 403);
+        return response()->json(['message' => 'غير مصرح لك.'], 403);
     }
 
-    $idea = Idea::where('owner_id', $user->id)
-        ->where('id', $idea_id)
+    $idea = Idea::where('id', $idea_id)
+        ->where('owner_id', $user->id)
         ->first();
 
     if (!$idea) {
         return response()->json([
-            'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لك.',
+            'message' => 'الفكرة غير موجودة أو لا تتبع لك.'
         ], 404);
     }
 
-    $reports = Report::where('idea_id', $idea_id)
-        ->where('report_type', 'post_launch_followup')
-        ->with(['meeting:id,meeting_date,notes'])
-        ->orderBy('created_at', 'desc')
-        ->get()
-        ->map(function ($report) {
-            return [
-                'report_id'        => $report->id,
-                'report_type'      => $report->report_type,
-                'evaluation_score' => $report->evaluation_score,
-                'status'           => $report->status,
-                'description'      => $report->description,
-                'strengths'        => $report->strengths,
-                'weaknesses'       => $report->weaknesses,
-                'recommendations'  => $report->recommendations,
-                'meeting' => $report->meeting ? [
-                    'meeting_date' => $report->meeting->meeting_date,
-                    'notes'        => $report->meeting->notes,
-                ] : null,
-                'created_at' => $report->created_at->format('Y-m-d H:i'),
-            ];
-        });
+    $followup = PostLaunchFollowUp::with('launchRequest')
+        ->where('id', $followup_id)
+        ->first();
 
-    if ($reports->isEmpty()) {
+    if (
+        !$followup ||
+        $followup->launchRequest->idea_id !== $idea->id
+    ) {
         return response()->json([
-            'message' => 'لا توجد تقارير للمتابعة بعد الإطلاق لهذه الفكرة.',
-            'total_reports' => 0,
-            'data' => [],
-        ], 200);
+            'message' => 'المتابعة غير موجودة أو لا تتبع لهذه الفكرة.'
+        ], 404);
     }
 
+    $report = Report::where('idea_id', $idea->id)
+        ->where('report_type', 'post_launch_followup')
+        ->where('description', 'LIKE', '%' . $followup->followup_phase . '%')
+        ->with(['meeting:id,meeting_date,notes'])
+        ->first();
+
+    if (!$report) {
+        return response()->json([
+            'message' => 'لا يوجد تقرير مطابق لهذه المتابعة حتى الآن.'
+        ], 404);
+    }
     return response()->json([
         'idea' => [
-            'id'     => $idea->id,
-            'title'  => $idea->title,
-            'status' => $idea->status,
+            'id'    => $idea->id,
+            'title' => $idea->title,
         ],
-        'total_reports' => $reports->count(),
-        'reports' => $reports,
+        'followup' => [
+            'id'     => $followup->id,
+            'phase'  => $followup->followup_phase,
+            'status' => $followup->status,
+        ],
+        'report' => [
+            'id'                => $report->id,
+            'status'            => $report->status,
+            'evaluation_score'  => $report->evaluation_score,
+            'description'       => $report->description,
+            'strengths'         => $report->strengths,
+            'weaknesses'        => $report->weaknesses,
+            'recommendations'   => $report->recommendations,
+            'meeting' => $report->meeting ? [
+                'meeting_date' => $report->meeting->meeting_date,
+                'notes'        => $report->meeting->notes,
+            ] : null,
+            'created_at' => $report->created_at->format('Y-m-d H:i'),
+        ],
     ]);
 }
 

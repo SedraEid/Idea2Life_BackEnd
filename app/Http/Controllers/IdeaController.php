@@ -8,7 +8,10 @@ use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
 use App\Models\Roadmap;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class IdeaController extends Controller
@@ -297,6 +300,38 @@ public function myIdeas(Request $request) // تابع جلب افكار صاحب
         'ideas' => $data
     ]);
 }
+
+
+
+//طلب انسحاب من قبل صاحب الفكرة 
+public function requestWithdrawal(Request $request, Idea $idea)
+{
+    $user = $request->user();
+    if ($idea->owner_id !== $user->id) {
+        return response()->json([
+            'message' => 'ليس لديك صلاحية طلب الانسحاب لهذه الفكرة.'
+        ], 403);
+    }
+    if ($idea->withdrawn) {
+        return response()->json([
+            'message' => 'تم تقديم طلب الانسحاب مسبقاً.'
+        ], 422);
+    }
+    foreach ($idea->committee->committeeMember as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title' => 'طلب انسحاب صاحب الفكرة',
+            'message' => "صاحب الفكرة '{$idea->title}' طلب الانسحاب من المشروع.",
+            'type' => 'warning',
+            'is_read' => false
+        ]);
+    }
+
+    return response()->json([
+        'message' => 'تم إرسال طلب الانسحاب إلى اللجنة للموافقة.'
+    ]);
+}
+
 
 
 }
