@@ -79,6 +79,32 @@ class Idea extends Model
     }
 
 
+  public function withdrawalRequests()
+    {
+        return $this->hasMany(WithdrawalRequest::class);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     public function postLaunchFollowups()
 {
     return $this->hasManyThrough(
@@ -90,6 +116,7 @@ class Idea extends Model
         'id'                
     );
 }
+
 
 
 

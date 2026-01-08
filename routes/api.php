@@ -17,6 +17,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\RoadmapController;
+use App\Http\Controllers\WithdrawalRequestController;
 use App\Models\PostLaunchFollowUp;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -279,6 +280,35 @@ Route::get('/graduated-projects', [PostLaunchFollowupController::class, 'getGrad
 
 
 ////////////////
+//عرض طلبات الانسحاب للجنة 
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/committee/withdrawal-requests', [WithdrawalRequestController::class, 'committeeWithdrawalRequests']);
+    
+});
+
+Route::middleware(['auth:sanctum'])->group(function () {
+    // طلب انسحاب من قبل صاحب الفكرة
+    Route::post('/ideas/{idea}/withdraw', [WithdrawalRequestController::class, 'ownerRequestWithdrawal']);
+});
+
+//قرار اللجنة بشان طلب االانسحاب
+Route::post('/committee/withdrawals/{withdrawalId}/review', [WithdrawalRequestController::class, 'reviewWithdrawal'])
+    ->middleware('auth:sanctum');
+
+
+//عرض طلبات الانسحاب مع قرار اللجنة لصاحب الفكرة
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/withdrawals', [WithdrawalRequestController::class, 'ownerAllWithdrawals']);
+});
+
+//دفع المبلغ الجزائي من اجل الانسحاب من قبل صاحب الفكرة
+Route::post('/withdrawals/{withdrawal}/execute',[WithdrawalRequestController::class, 'executeWithdrawal'])->middleware('auth:sanctum');
+
+//عرض كلشي معاملات مالية لصاحب الفكرة 
+Route::middleware('auth:sanctum')->get(
+    '/idea-owner/transactions',
+    [WalletController::class, 'ideaOwnerTransactions']
+);
 
 
 

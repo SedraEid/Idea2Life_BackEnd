@@ -68,4 +68,15 @@ public function ideas()
         return $this->hasMany(ProfitDistribution::class);
     }
 
+
+      public function withdrawalRequests()
+    {
+        return $this->hasMany(WithdrawalRequest::class, 'requested_by');
+    }
+
+    public function reviewedWithdrawals()
+    {
+        return $this->hasMany(WithdrawalRequest::class, 'reviewed_by');
+    }
+
 }

@@ -67,6 +67,8 @@ class DistributeProfitsJob implements ShouldQueue
                     'amount'           => $distribution->amount,
                     'percentage'       => $distribution->percentage,
 'beneficiary_role' => $beneficiaryRole,
+        'payment_method'   => 'wallet',
+
                     'status'           => 'completed',
                     'notes'            => $distribution->notes 
                         ?? 'تحويل أرباح مشروع رقم ' . $idea->id,

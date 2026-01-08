@@ -616,9 +616,9 @@ public function payPenaltyForPhase(Request $request, $idea_id)
         $investorWallet->balance += $amount;
         $investorWallet->save();
         WalletTransaction::create([
-            'wallet_id' => $investorWallet->id,
-            'sender_id' => $idea->owner->id,
-            'receiver_id' => $investorMember->user_id,
+            'wallet_id' => $ownerWallet->id,
+            'sender_id' => $ownerWallet->id,
+            'receiver_id' => $investorWallet->id,
             'transaction_type' => 'transfer',
             'amount' => $amount,
             'status' => 'completed',
@@ -758,13 +758,15 @@ public function refundPenalty(Request $request, Idea $idea)
 
         $ownerWallet->increment('balance', $refundAmount);
         WalletTransaction::create([
-            'wallet_id' => $ownerWallet->id,
+            'wallet_id' => $investorWallet->id,
             'sender_id' => $investorWallet->id,
             'receiver_id' => $ownerWallet->id,
             'transaction_type' => 'refund',
             'amount' => $refundAmount,
             'status' => 'completed',
             'beneficiary_role' => 'creator',
+                    'payment_method'   => 'wallet',
+
             'notes' => $refundOption === 'half'
                 ? 'تم إرجاع نصف المبلغ الجزائي بعد مراجعة الأداء.'
                 : 'تم إرجاع كامل المبلغ الجزائي بعد مراجعة الأداء.'
@@ -1027,10 +1029,10 @@ try {
     $ownerWallet->increment('balance', $amount);
 
     WalletTransaction::create([
-        'wallet_id'        => $ownerWallet->id, 
+        'wallet_id'        => $investorWallet->id, 
         'funding_id'       => $funding->id,
-        'sender_id'        => $investorUser->id,   // معرف المستخدم المرسل
-        'receiver_id'      => $ownerUser->id,      // معرف المستخدم المستلم
+        'sender_id'        => $investorWallet->id,   
+        'receiver_id'      => $ownerWallet->id,      
         'transaction_type' => 'transfer',
         'amount'           => $amount,
         'percentage'       => 0,

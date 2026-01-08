@@ -324,7 +324,7 @@ $ownerWallet    = $ownerUser?->wallet;
     $investorWallet->decrement('balance', $amount);
     $ownerWallet->increment('balance', $amount);
     WalletTransaction::create([
-        'wallet_id'        => $ownerWallet->id,          
+        'wallet_id'        => $investorWallet->id,          
         'funding_id'       => $funding->id,
  'sender_id'        => $investorUser->id,  
     'receiver_id'      => $ownerUser->id, 
@@ -533,42 +533,45 @@ public function showFundingForIdea(Request $request, $idea_id)
         return response()->json(['message' => 'أنت غير مرتبط بأي لجنة.'], 403);
     }
 
-    $fundings = Funding::with([
-        'idea:id,title,description,committee_id,owner_id',
-        'idea.owner:id,name,email',
-        'idea.committee:id,committee_name',
-        'investor.user:id,name,email',
-        'walletTransactions.sender.user:id,name,email',  
-        'walletTransactions.receiver.user:id,name,email',
+     $wallet = $user->wallet;
+    if (!$wallet) {
+        return response()->json([
+            'message' => 'لا يوجد محفظة مرتبطة بهذا المستخدم.'
+        ], 404);
+    }
+    $transactions = WalletTransaction::with([
+        'sender.user:id,name,email',
+        'receiver.user:id,name,email',
+        'funding.idea:id,title',
     ])
-    ->whereHas('idea', function ($q) use ($committeeMember) {
-        $q->where('committee_id', $committeeMember->committee_id);
+    ->where(function ($q) use ($wallet) {
+        $q->where('wallet_id', $wallet->id)
+          ->orWhere('sender_id', $wallet->id)
+          ->orWhere('receiver_id', $wallet->id);
     })
+    ->orderBy('created_at', 'desc')
     ->get();
 
-    $checks = [];
-    foreach ($fundings as $funding) {
-        foreach ($funding->walletTransactions as $tx) {
-            $checks[] = [
-                'check_id' => $tx->id,
-                'from' => $tx->sender?->user?->name ?? 'غير معروف',
-                'to' => $tx->receiver?->user?->name ?? 'غير معروف',
-                'amount' => $tx->amount,
-                'date' => $tx->created_at->format('Y-m-d'),
-                'payment_method' => $tx->payment_method ?? 'غير محدد',
-                'notes' => $tx->notes ?? '',
-                'funding_id' => $funding->id,
-                'idea_title' => $funding->idea->title ?? '',
-                'investor' => $funding->investor?->user?->name ?? '',
-                'idea_owner' => $funding->idea->owner->name ?? '',
-            ];
-        }
-    }
+    $data = $transactions->map(function ($tx) use ($wallet) {
+        return [
+            'transaction_id' => $tx->id,
+            'type'           => $tx->transaction_type,
+            'amount'         => $tx->amount,
+            'status'         => $tx->status,
+            'date'           => $tx->created_at->format('Y-m-d H:i'),
+            'direction'      => $tx->sender_id == $wallet->id ? 'outgoing' : 'incoming',
+            'from'           => $tx->sender?->user?->name ?? '—',
+            'to'             => $tx->receiver?->user?->name ?? '—',
+            'payment_method' => $tx->payment_method,
+            'notes'          => $tx->notes,
+        ];
+    });
 
     return response()->json([
-        'committee_id' => $committeeMember->committee_id,
-        'committee_name' => $committeeMember->committee->committee_name ?? '',
-        'checks' => $checks,
+        'wallet_id'   => $wallet->id,
+        'owner_name' => $user->name,
+        'balance'    => $wallet->balance,
+        'transactions' => $data
     ]);
 }
 
