@@ -49,13 +49,6 @@ public function ownerRequestWithdrawal(Request $request, Idea $idea)
             'message' => 'يوجد طلب انسحاب قيد الانتظار بالفعل لهذه الفكرة.'
         ], 422);
     }
-
-    $restrictedStages = ['execution_and_development', 'launch'];
-    if (in_array($idea->roadmap_stage, $restrictedStages)) {
-        return response()->json([
-            'message' => "لا يمكن تقديم طلب انسحاب في المرحلة الحالية ({$idea->roadmap_stage})."
-        ], 422);
-    }
     $withdrawalRequest = WithdrawalRequest::create([
         'idea_id' => $idea->id,
         'user_id' => $user->id,
@@ -179,114 +172,146 @@ public function ownerAllWithdrawals(Request $request)
 
 //دفع الغرامة المالية من اجل الانسحاب من قبل صاحب الفكرة 
 
+
 public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawal)
 {
     $user = $request->user();
+
     if ($withdrawal->requested_by !== $user->id) {
         return response()->json(['message' => 'غير مصرح لك.'], 403);
     }
 
     if ($withdrawal->status !== 'approved') {
-        return response()->json(['message' => 'لم تتم الموافقة على طلب الانسحاب بعد.'], 422);
+        return response()->json(['message' => 'طلب الانسحاب غير موافق عليه.'], 422);
     }
-
     if ($withdrawal->penalty_paid) {
         return response()->json(['message' => 'تم تنفيذ الانسحاب مسبقاً.'], 422);
     }
 
-    DB::transaction(function () use ($withdrawal) {
+    try {
+        DB::transaction(function () use ($withdrawal) {
 
-        $idea = $withdrawal->idea;
-        $ownerWallet = Wallet::where('user_id', $withdrawal->requested_by)
-            ->lockForUpdate()
-            ->firstOrFail();
+            $idea = $withdrawal->idea;
+            $committee = $idea->committee;
 
-        $investorMember = $idea->committee
-            ?->committeeMember()
-            ->where('role_in_committee', 'investor')
-            ->first();
+            $penalty = $withdrawal->penalty_amount;
 
-        if (!$investorMember) {
-            throw new \Exception('لا يوجد مستثمر مرتبط بهذه الفكرة.');
-        }
+            $investorRate  = 0.50;
+            $committeeRate = 0.30;
+            $platformRate  = 0.20;
 
-        $investorWallet = Wallet::where('user_id', $investorMember->user_id)
-            ->lockForUpdate()
-            ->firstOrFail();
+            $ownerWallet = Wallet::where('user_id', $withdrawal->requested_by)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $platformWallet = Wallet::where('user_type', 'admin')
-            ->lockForUpdate()
-            ->firstOrFail();
+            if ($ownerWallet->balance < $penalty) {
+                throw new \Exception('رصيد غير كافٍ لدفع الغرامة');
+            }
 
-        if ($ownerWallet->balance < $withdrawal->penalty_amount) {
-            throw new \Exception('رصيد غير كافٍ لدفع الغرامة.');
-        }
+            $investorMember = $committee->committeeMember()
+                ->where('role_in_committee', 'investor')
+                ->firstOrFail();
 
-        $penalty = $withdrawal->penalty_amount;
-        $investorShare = $penalty * 0.70;
-        $platformShare = $penalty * 0.30;
+            $investorWallet = Wallet::where('user_id', $investorMember->user_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $ownerWallet->decrement('balance', $penalty);
-        $investorWallet->increment('balance', $investorShare);
-        $platformWallet->increment('balance', $platformShare);
+            $platformWallet = Wallet::where('user_type', 'admin')
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        WalletTransaction::create([
+            $ownerWallet->decrement('balance', $penalty);
+
+            $investorAmount = $penalty * $investorRate;
+            $investorWallet->increment('balance', $investorAmount);
+
+            WalletTransaction::create([
                 'wallet_id'        => $ownerWallet->id,
-            'sender_id' => $ownerWallet->id,
-            'receiver_id' => $investorWallet->id,
-            'amount' => $investorShare,
-            'transaction_type' => 'withdrawal',
-                        'beneficiary_role' => 'investor',
-
-                    'payment_method'   => 'wallet',
-            'status' => 'completed',
-            'notes' => 'حصة المستثمر من غرامة انسحاب صاحب الفكرة'
-        ]);
-
-        WalletTransaction::create([
-            'wallet_id'        => $ownerWallet->id,
-            'sender_id' => $ownerWallet->id,
-            'receiver_id' => $platformWallet->id,
-            'amount' => $platformShare,
-            'transaction_type' => 'withdrawal',
-            'payment_method'   => 'wallet',
-                        'beneficiary_role' => 'admin',
-
-            'status' => 'completed',
-            'notes' => 'حصة المنصة من غرامة انسحاب صاحب الفكرة'
-        ]);
-
-        $withdrawal->update([
-            'penalty_paid' => true,
-            'status' => 'approved',
-            'executed_at' => now(),
-        ]);
-
-        $idea->update([
-            'status' => 'withdrawn',
-            'roadmap_stage' => 'withdrawn',
-            'withdrawn' => true,
-        ]);
-
-        $roadmap = Roadmap::where('idea_id', $idea->id)
-            ->lockForUpdate()
-            ->first();
-
-        if ($roadmap) {
-            $roadmap->update([
-                'current_stage' => 'withdrawn',
-                'stage_description' => 'تم انسحاب صاحب الفكرة بعد موافقة اللجنة وتنفيذ الغرامة.',
-                'progress_percentage' => $roadmap->progress_percentage,
-                'next_step' => null,
-                'last_update' => now(),
+                'sender_id'        => $ownerWallet->id,
+                'receiver_id'      => $investorWallet->id,
+                'transaction_type' => 'withdrawal',
+                'amount'           => $investorAmount,
+                'beneficiary_role' => 'investor',
+                'payment_method'   => 'wallet',
+                'status'           => 'completed',
+                'notes'            => 'حصة المستثمر من غرامة انسحاب الفكرة',
             ]);
-        }
-    });
 
-    return response()->json([
-        'message' => 'تم تنفيذ الانسحاب وتوزيع الغرامة بنجاح.'
-    ]);
+            $committeeMembers = $committee->committeeMember()
+                ->where('role_in_committee', '!=', 'investor')
+                ->get();
+
+            if ($committeeMembers->count() > 0) {
+                $committeeTotal = $penalty * $committeeRate;
+                $perMember = $committeeTotal / $committeeMembers->count();
+
+                foreach ($committeeMembers as $member) {
+                    $memberWallet = Wallet::where('user_id', $member->user_id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    $memberWallet->increment('balance', $perMember);
+
+                    WalletTransaction::create([
+                        'wallet_id'        => $ownerWallet->id,
+                        'sender_id'        => $ownerWallet->id,
+                        'receiver_id'      => $memberWallet->id,
+                        'transaction_type' => 'withdrawal',
+                        'amount'           => $perMember,
+                        'beneficiary_role' => $member->role_in_committee,
+                        'payment_method'   => 'wallet',
+                        'status'           => 'completed',
+                        'notes'            => 'حصة عضو لجنة من غرامة انسحاب الفكرة',
+                    ]);
+                }
+            }
+
+            $platformAmount = $penalty * $platformRate;
+            $platformWallet->increment('balance', $platformAmount);
+
+            WalletTransaction::create([
+                'wallet_id'        => $ownerWallet->id,
+                'sender_id'        => $ownerWallet->id,
+                'receiver_id'      => $platformWallet->id,
+                'transaction_type' => 'withdrawal',
+                'amount'           => $platformAmount,
+                'beneficiary_role' => 'admin',
+                'payment_method'   => 'wallet',
+                'status'           => 'completed',
+                'notes'            => 'حصة المنصة من غرامة انسحاب الفكرة',
+            ]);
+
+            $withdrawal->update([
+                'penalty_paid' => true,
+                'status'       => 'approved',
+                'executed_at'  => now(),
+            ]);
+
+            $idea->update([
+                'status'        => 'withdrawn',
+                'roadmap_stage' => 'withdrawn',
+                'withdrawn'     => true,
+            ]);
+
+            Roadmap::where('idea_id', $idea->id)->update([
+                'current_stage'     => 'withdrawn',
+                'stage_description' => 'تم الانسحاب بعد دفع الغرامة وتوزيعها',
+                'last_update'       => now(),
+            ]);
+        });
+
+        return response()->json([
+            'message' => 'تم تنفيذ الانسحاب وتوزيع الغرامة بنجاح'
+        ]);
+
+    } catch (\Throwable $e) {
+        return response()->json([
+            'message' => 'فشل تنفيذ الانسحاب',
+            'error'   => $e->getMessage()
+        ], 500);
+    }
 }
+
 
 
 }
