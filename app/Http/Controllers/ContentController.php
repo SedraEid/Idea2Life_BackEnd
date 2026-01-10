@@ -7,9 +7,11 @@ use App\Models\Content;
 use App\Models\User;
 use App\Models\Committee;
 use App\Models\Idea;
+use App\Models\Notification;
 use App\Models\WalletTransaction;
 use App\Models\Wallet;
-
+use App\Models\WithdrawalRequest;
+use Illuminate\Support\Facades\DB;
 
 class ContentController extends Controller
 {
@@ -274,7 +276,110 @@ public function getAllTransactions()
     ]);
 }
 
+//شحن المحافظ من خلال الادمن 
+public function chargeUserWallet(Request $request)
+{
+    $request->validate([
+        'user_id' => 'required|exists:users,id',
+        'amount'  => 'required|numeric|min:1',
+    ]);
+
+    DB::beginTransaction();
+
+    try {
+        $user = User::findOrFail($request->user_id);
+        $wallet = $user->wallet;
+        if (!$wallet) {
+            $wallet = Wallet::create([
+                'user_id'   => $user->id,
+                'user_type' => $user->role, 
+                'balance'   => 0,
+                'status'    => 'active',
+            ]);
+        }
+        $wallet->balance += $request->amount;
+        $wallet->save();
+        WalletTransaction::create([
+            'wallet_id'        => $wallet->id,
+            'receiver_id'      => $wallet->id,
+            'sender_id'        => null, 
+            'transaction_type' => 'transfer',
+            'amount'           => $request->amount,
+            'status'           => 'completed',
+            'payment_method'   => 'manual',
+            'notes'            => 'شحن من الأدمن',
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'تم شحن المحفظة بنجاح',
+            'user_id' => $user->id,
+            'role'    => $user->role,
+            'balance' => $wallet->balance,
+        ], 200);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'فشل شحن المحفظة',
+            'error'   => $e->getMessage(),
+        ], 500);
+    }
 }
+
+
+
+//عرض الاشعارات للادمن 
+public function getAdminNotifications()
+{
+     $notifications = Notification::where('user_id', 1)
+        ->orderByDesc('created_at')
+        ->get();
+    Notification::where('user_id', 1)
+        ->where('is_read', false)
+        ->update(['is_read' => true]);
+    return response()->json([
+        'notifications' => $notifications
+    ]);
+}
+
+//تابع يعرض المشاريع المنسحبة للادمن 
+public function adminWithdrawnIdeas()
+{
+    $withdrawals = WithdrawalRequest::with([
+        'idea:id,title,owner_id',
+        'idea.owner:id,name',
+        'requester:id,name',
+        'reviewer:id,name'
+    ])
+    ->orderByDesc('created_at')
+    ->get()
+    ->map(function ($w) {
+        return [
+            'withdrawal_id'   => $w->id,
+            'idea_id'         => $w->idea_id,
+            'idea_title'      => $w->idea?->title,
+            'owner_name'      => $w->idea?->owner?->name,
+            'requested_by'    => $w->requester?->name,
+            'reason'          => $w->reason,
+            'status'          => $w->status,
+            'penalty_amount'  => $w->penalty_amount,
+            'penalty_paid'    => $w->penalty_paid,
+            'reviewed_by'     => $w->reviewer?->name,
+            'reviewed_at'     => $w->reviewed_at?->format('Y-m-d H:i:s'),
+            'committee_notes' => $w->committee_notes,
+            'created_at'      => $w->created_at?->format('Y-m-d H:i:s'),
+        ];
+    });
+
+    return response()->json([
+        'withdrawals' => $withdrawals
+    ]);
+}
+
+}
+
 
 
 

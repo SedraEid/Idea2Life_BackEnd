@@ -166,7 +166,6 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
     DB::beginTransaction();
 
     try {
-        // تحديث حالة طلب الإطلاق
         $launchRequest->update([
             'status'        => $validated['decision'],
             'committee_notes'=> $validated['committee_notes'] ?? null,
@@ -175,7 +174,6 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
             'launch_date'   => $validated['launch_date'] ?? null,
         ]);
 
-        // إنشاء تقرير اللجنة
         Report::create([
             'idea_id'         => $launchRequest->idea_id,
             'meeting_id'      => $meeting->id,
@@ -188,7 +186,6 @@ public function evaluateLaunchRequest(Request $request, $launchRequestId)
             'status'          => $validated['decision'],
         ]);
 
-        // زيادة النسخة إذا تمت الموافقة
         if ($validated['decision'] === 'approved') {
             $lastVersion = LaunchRequest::where('idea_id', $launchRequest->idea_id)->max('version') ?? 0;
             $launchRequest->update([

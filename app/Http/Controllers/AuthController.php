@@ -51,33 +51,36 @@ class AuthController extends Controller
 
     //عميلة تسجيل الدخول لصاحب الفكرة
 
-     public function loginIdeaOwner(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'email'    => 'required|email',
-            'password' => 'required|string|min:6',
-        ]);
+        public function loginIdeaOwner(Request $request)
+        {
+            $validator = Validator::make($request->all(), [
+                'email'    => 'required|email',
+                'password' => 'required|string|min:6',
+            ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            $user = User::where('email', $request->email)
+                        ->where('role', 'idea_owner') 
+                        ->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                return response()->json(['message' => 'Invalid credentials'], 401);
+            }
+
+            $user->tokens()->delete();
+            $token = $user->createToken('idea-owner-token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Login successful',
+                'user' => $user,
+                'token' => $token,
+                'expires_in' => config('sanctum.expiration') * 60
+
+            ], 200);
         }
-
-        $user = User::where('email', $request->email)
-                    ->where('role', 'idea_owner') 
-                    ->first();
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
-        }
-
-        $token = $user->createToken('idea-owner-token')->plainTextToken;
-
-        return response()->json([
-            'message' => 'Login successful',
-            'user' => $user,
-            'token' => $token
-        ], 200);
-    }
 
 
 //انشاء حساب لاعضاء اللجنة 
@@ -153,13 +156,16 @@ public function loginCommitteeMember(Request $request)
             'message' => 'البريد الإلكتروني أو كلمة المرور غير صحيحة'
         ], 401);
     }
-
+    
+     $user->tokens()->delete();
     $token = $user->createToken('committee_member_token')->plainTextToken;
 
     return response()->json([
         'message' => 'تم تسجيل الدخول بنجاح',
         'user' => $user,
-        'token' => $token
+        'token' => $token,
+        'expires_in' => config('sanctum.expiration') * 60
+
     ]);
 }
 

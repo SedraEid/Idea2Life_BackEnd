@@ -32,7 +32,7 @@ public function requestFunding(Request $request, Idea $idea) // طلب تموي�
         return response()->json(['message' => 'خطة العمل لم تحقق الحد الأدنى من التقييم (80) لطلب التمويل.'], 400);
     }
     $existingFunding = Funding::where('idea_id', $idea->id)
-        ->whereIn('status', ['requested', 'under_review', 'approved'])
+        ->whereIn('status', ['requested', 'under_review', 'approved','funded'])
         ->first();
     if ($existingFunding) {
         return response()->json([

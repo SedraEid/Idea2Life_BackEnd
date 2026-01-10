@@ -73,6 +73,7 @@ public function getMyIdeaPostLaunchFollowups(Request $request, $idea_id)
 'product_issue_detected'  => $followup->product_issue_detected,
 'profit_distributed'      => $followup->profit_distributed,
 'owner_acknowledged'      => $followup->owner_acknowledged,
+'owner_response'  => $followup->owner_response,
 
 
                         'reviewed_by' => $followup->reviewer ? [
@@ -154,6 +155,8 @@ public function getMyIdeaPostLaunchFollowups(Request $request, $idea_id)
 
                     'actions_taken'  => $followup->actions_taken,
                     'committee_notes' => $followup->committee_notes,
+                    'owner_acknowledged'      => $followup->owner_acknowledged,
+'owner_response'  => $followup->owner_response,
 
                     'is_stable'        => $followup->is_stable,
                     'graduation_date' => $followup->graduation_date,
@@ -503,6 +506,54 @@ public function getGraduatedProjects(Request $request)
     ]);
 }
 
+
+//عرض لصاحب الفكرة هل تم توزيع الارباح ام لا و كم نسبة كل واحد
+public function profitDistributionSummary(Request $request, Idea $idea)
+{
+    $user = $request->user();
+    if ($user->id !== $idea->owner_id) {
+        return response()->json([
+            'message' => 'غير مصرح لك بالوصول لهذه البيانات.'
+        ], 403);
+    }
+
+    $isDistributed = $idea->postLaunchFollowups()
+        ->where('profit_distributed', true)
+        ->exists();
+
+    if (!$isDistributed) {
+        return response()->json([
+            'idea_id' => $idea->id,
+            'profit_distributed' => false,
+            'message' => 'لم يتم توزيع الأرباح بعد.',
+            'distributions' => []
+        ]);
+    }
+
+    $distributions = $idea->profitDistributions()
+        ->with('user:id,name,role')
+        ->get()
+        ->map(function ($distribution) {
+            return [
+                'user_name' => $distribution->user->name,
+                'role'      => $distribution->user_role,
+                'percentage'=> $distribution->percentage . '%',
+                'amount'    => $distribution->amount,
+            ];
+        });
+
+    $ownerDistribution = $idea->profitDistributions()
+        ->where('user_id', $idea->owner_id)
+        ->first();
+
+    return response()->json([
+        'idea_id' => $idea->id,
+        'profit_distributed' => true,
+        'owner_percentage' => $ownerDistribution?->percentage . '%',
+        'your_amount'    => $ownerDistribution?->amount,
+        'distributions'   => $distributions
+    ]);
+}
 
 
 

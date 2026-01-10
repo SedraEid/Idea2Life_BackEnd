@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Idea;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Models\Notification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,6 +31,8 @@ class DistributeProfitsJob implements ShouldQueue
                 ->firstOrFail();
 
             foreach ($idea->profitDistributions as $distribution) {
+
+                // لا نحول لنفس صاحب الفكرة
                 if ($distribution->user_id === $idea->owner_id) {
                     continue;
                 }
@@ -43,21 +46,17 @@ class DistributeProfitsJob implements ShouldQueue
                     throw new \Exception('رصيد صاحب الفكرة غير كافٍ لتحويل الأرباح');
                 }
 
+                // تحويل الرصيد
                 $ownerWallet->decrement('balance', $distribution->amount);
-
                 $receiverWallet->increment('balance', $distribution->amount);
-                $beneficiaryRole = match ($distribution->user_role) {
-    'idea_owner' => 'creator',
-    'investor'   => 'investor',
-    'admin'      => 'admin',
-    'committee_member' => str_replace(
-        'دوره باللجنة: ',
-        '',
-        $distribution->notes
-    ),
-    default => null,
-};
 
+                $beneficiaryRole = match ($distribution->user_role) {
+                    'idea_owner'        => 'creator',
+                    'investor'          => 'investor',
+                    'admin'             => 'admin',
+                    'committee_member'  => str_replace('دوره باللجنة: ', '', $distribution->notes),
+                    default             => null,
+                };
 
                 WalletTransaction::create([
                     'wallet_id'        => $ownerWallet->id,
@@ -66,14 +65,31 @@ class DistributeProfitsJob implements ShouldQueue
                     'transaction_type' => 'distribution',
                     'amount'           => $distribution->amount,
                     'percentage'       => $distribution->percentage,
-'beneficiary_role' => $beneficiaryRole,
-        'payment_method'   => 'wallet',
-
+                    'beneficiary_role' => $beneficiaryRole,
+                    'payment_method'   => 'wallet',
                     'status'           => 'completed',
-                    'notes'            => $distribution->notes 
+                    'notes'            => $distribution->notes
                         ?? 'تحويل أرباح مشروع رقم ' . $idea->id,
                 ]);
+
+                Notification::create([
+                    'user_id' => $distribution->user_id,
+                    'title'   => 'تم استلام أرباح مشروع',
+                    'message' => 'تم تحويل أرباحك من مشروع رقم '
+                        . $idea->id . ' بقيمة '
+                        . number_format($distribution->amount, 2),
+                    'type'    => 'profit_distribution',
+                    'is_read' => false,
+                ]);
             }
+
+            Notification::create([
+                'user_id' => $idea->owner_id,
+                'title'   => 'تم توزيع أرباح المشروع',
+                'message' => 'تم توزيع أرباح مشروعك على جميع الأطراف المستحقة بنجاح.',
+                'type'    => 'profit_distribution_summary',
+                'is_read' => false,
+            ]);
         });
     }
 }

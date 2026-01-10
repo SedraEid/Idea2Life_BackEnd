@@ -310,6 +310,13 @@ Route::middleware('auth:sanctum')->get(
     [WalletController::class, 'ideaOwnerTransactions']
 );
 
+//عرض اذا تم توزيع الارابح ام لا لصاحب الفكرة و نسبة التوزيع 
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/ideas/{idea}/profit-distribution-summary',[PostLaunchFollowupController::class, 'profitDistributionSummary']);
+
+});
+
+
 
 
 
@@ -336,3 +343,10 @@ Route::post('/admin/contents/store', [ContentController::class, 'store']);
 Route::delete('/admin/contents/destroy/{id}', [ContentController::class, 'destroy']);
 //عرض محتويات الموقع
 Route::get('/admin/contents/index', [ContentController::class, 'index']);
+
+//شحن المحافظ من قبل الادمن 
+Route::post('/admin/wallets/charge', [ContentController::class, 'chargeUserWallet']);
+//عرض اشعارات الادمن 
+Route::get('/admin/notifications', [ContentController::class, 'getAdminNotifications']);
+//عرض المشاريع المنسحبة للادمن 
+Route::get('/admin/withdrawals', [ContentController::class, 'adminWithdrawnIdeas']);

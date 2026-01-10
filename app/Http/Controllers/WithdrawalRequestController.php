@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Idea;
 use App\Models\Notification;
 use App\Models\Roadmap;
+use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
@@ -67,6 +68,16 @@ public function ownerRequestWithdrawal(Request $request, Idea $idea)
             ]);
         }
     }
+       $admins = User::where('role', 'admin')->get();
+    foreach ($admins as $admin) {
+        Notification::create([
+            'user_id' => $admin->id,
+            'title' => "طلب انسحاب جديد",
+            'message' => "قام صاحب الفكرة '{$user->name}' بتقديم طلب انسحاب للفكرة '{$idea->title}'. يرجى مراجعة الطلب.",
+            'type' => 'withdrawal_request',
+            'is_read' => false,
+        ]);
+    }
 
     return response()->json([
         'message' => 'تم تقديم طلب الانسحاب بنجاح، في انتظار موافقة اللجنة.',
@@ -113,6 +124,18 @@ public function reviewWithdrawal(Request $request, $withdrawalId)
         'type' => 'withdrawal_review',
         'is_read' => false,
     ]);
+
+     $admins = User::where('role', 'admin')->get();
+    foreach ($admins as $admin) {
+        Notification::create([
+            'user_id' => $admin->id,
+            'title' => 'طلب انسحاب تم مراجعته',
+            'message' => "قام عضو اللجنة '{$user->name}' بمراجعة طلب الانسحاب للفكرة '{$withdrawal->idea->title}'. " .
+                         "الحالة: {$withdrawal->status}.",
+            'type' => 'withdrawal_review',
+            'is_read' => false,
+        ]);
+    }
 
     return response()->json([
         'message' => 'تم تحديث حالة طلب الانسحاب بنجاح.',
@@ -172,7 +195,6 @@ public function ownerAllWithdrawals(Request $request)
 
 //دفع الغرامة المالية من اجل الانسحاب من قبل صاحب الفكرة 
 
-
 public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawal)
 {
     $user = $request->user();
@@ -190,7 +212,6 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
 
     try {
         DB::transaction(function () use ($withdrawal) {
-
             $idea = $withdrawal->idea;
             $committee = $idea->committee;
 
@@ -236,10 +257,19 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
                 'status'           => 'completed',
                 'notes'            => 'حصة المستثمر من غرامة انسحاب الفكرة',
             ]);
+            Notification::create([
+    'user_id' => $investorWallet->user_id,
+    'title' => 'تم توزيع الغرامة بعد الانسحاب',
+    'message' => "تم تنفيذ انسحاب الفكرة '{$idea->title}'. حصتك من الغرامة: {$investorAmount}",
+    'type' => 'withdrawal_distribution',
+    'is_read' => false,
+]);
 
             $committeeMembers = $committee->committeeMember()
                 ->where('role_in_committee', '!=', 'investor')
                 ->get();
+
+            $committeeNotifications = [];
 
             if ($committeeMembers->count() > 0) {
                 $committeeTotal = $penalty * $committeeRate;
@@ -251,7 +281,6 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
                         ->firstOrFail();
 
                     $memberWallet->increment('balance', $perMember);
-
                     WalletTransaction::create([
                         'wallet_id'        => $ownerWallet->id,
                         'sender_id'        => $ownerWallet->id,
@@ -263,9 +292,20 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
                         'status'           => 'completed',
                         'notes'            => 'حصة عضو لجنة من غرامة انسحاب الفكرة',
                     ]);
-                }
-            }
 
+                    $committeeNotifications[] = [
+                        'user_id' => $member->user_id,
+                        'title' => 'تم توزيع الغرامة بعد الانسحاب',
+                        'message' => "تم تنفيذ انسحاب الفكرة '{$idea->title}'. حصتك من الغرامة: {$perMember} ",
+                        'type' => 'withdrawal_distribution',
+                        'is_read' => false,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+
+                Notification::insert($committeeNotifications);
+            }
             $platformAmount = $penalty * $platformRate;
             $platformWallet->increment('balance', $platformAmount);
 
@@ -279,6 +319,25 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
                 'payment_method'   => 'wallet',
                 'status'           => 'completed',
                 'notes'            => 'حصة المنصة من غرامة انسحاب الفكرة',
+            ]);
+
+            $admins = User::where('role', 'admin')->get();
+            foreach ($admins as $admin) {
+                Notification::create([
+                    'user_id' => $admin->id,
+                    'title' => 'تم توزيع الغرامة بعد الانسحاب',
+                    'message' => "تم تنفيذ انسحاب الفكرة '{$idea->title}'. حصتك من الغرامة: {$platformAmount}",
+                    'type' => 'withdrawal_distribution',
+                    'is_read' => false,
+                ]);
+            }
+
+            Notification::create([
+                'user_id' => $ownerWallet->user_id,
+                'title' => 'تم خصم الغرامة بعد الانسحاب',
+                'message' => "تم خصم الغرامة من رصيدك بعد انسحاب الفكرة '{$idea->title}'. المبلغ المخصوم: {$penalty}",
+                'type' => 'withdrawal_distribution',
+                'is_read' => false,
             ]);
 
             $withdrawal->update([
@@ -297,6 +356,8 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
                 'current_stage'     => 'withdrawn',
                 'stage_description' => 'تم الانسحاب بعد دفع الغرامة وتوزيعها',
                 'last_update'       => now(),
+                'progress_percentage'=>0,
+                'next_step'         => null,
             ]);
         });
 
@@ -311,6 +372,7 @@ public function executeWithdrawal(Request $request, WithdrawalRequest $withdrawa
         ], 500);
     }
 }
+
 
 
 
