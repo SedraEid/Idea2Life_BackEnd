@@ -343,7 +343,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 // يعطي اجمالي عدد الافكار والمستخدمين للادمن
 Route::get('/admin/stats', [ContentController::class, 'getStats']);
 //يعرض الافكار للادمن 
-Route::get('/admin/ideas', [ContentController::class, 'indexideas']);
+Route::get('/admin/ideas', [ContentController::class, 'ideasWithProfitsForAdmin']);
 // يعرض كل المستخدمين 
 Route::get('/admin/users', [ContentController::class, 'allUsers']);
 //جلب جميع اللجان مع الأفكار التابعة لها
@@ -358,7 +358,6 @@ Route::post('/admin/contents/store', [ContentController::class, 'store']);
 Route::delete('/admin/contents/destroy/{id}', [ContentController::class, 'destroy']);
 //عرض محتويات الموقع
 Route::get('/admin/contents/index', [ContentController::class, 'index']);
-
 //شحن المحافظ من قبل الادمن 
 Route::post('/admin/wallets/charge', [ContentController::class, 'chargeUserWallet']);
 //عرض اشعارات الادمن 
@@ -366,7 +365,4 @@ Route::get('/admin/notifications', [ContentController::class, 'getAdminNotificat
 //عرض المشاريع المنسحبة للادمن 
 Route::get('/admin/withdrawals', [ContentController::class, 'adminWithdrawnIdeas']);
 //عمل اجتماع للجنة من قبل الادمن 
-   Route::post(
-        '/admin/ideas/{idea}/committee-meeting',
-        [ContentController::class, 'createCommitteeMeeting']
-    );
+Route::post('/admin/ideas/{idea}/committee-meeting', [ContentController::class, 'createCommitteeMeeting'] );

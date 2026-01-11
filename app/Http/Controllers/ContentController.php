@@ -1,18 +1,19 @@
 <?php
 
 namespace App\Http\Controllers;
-
 use Illuminate\Http\Request;
 use App\Models\Content;
 use App\Models\User;
 use App\Models\Committee;
 use App\Models\Idea;
-use App\Models\Meeting;
-use App\Models\Notification;
 use App\Models\WalletTransaction;
 use App\Models\Wallet;
-use App\Models\WithdrawalRequest;
 use Illuminate\Support\Facades\DB;
+use App\Models\Notification;
+use App\Models\WithdrawalRequest;
+use App\Models\Meeting;
+
+
 
 class ContentController extends Controller
 {
@@ -120,16 +121,50 @@ public function getStats()
 }
 
 //تابع يعرض الافكار للادمن 
-public function indexideas()
+public function ideasWithProfitsForAdmin()
 {
     $ideas = Idea::with([
-        'owner',              // صاحب الفكرة
-        'committee',          // اللجنة
+        'owner:id,name',
+        'committee',
         'fundings.investor.user:id,name',
+        'profitDistributions.user:id,name'
     ])->get();
+
+    $ideas = $ideas->map(function($idea) {
+        $isDistributed = $idea->postLaunchFollowups()
+            ->where('profit_distributed', true)
+            ->exists();
+        $distributions = [];
+        if ($isDistributed) {
+            $distributions = $idea->profitDistributions
+                ->map(function ($distribution) {
+                    return [
+                        'user_name' => $distribution->user?->name ?? 'غير معروف',
+                        'role'      => $distribution->user_role,
+                        'percentage'=> $distribution->percentage . '%',
+                        'amount'    => $distribution->amount,
+                    ];
+                });
+        }
+        return [
+            'idea_id'           => $idea->id,
+            'title'             => $idea->title,
+            'owner_name'        => $idea->owner?->name,
+            'committee_name'    => $idea->committee?->committee_name,
+            'profit_distributed'=> $isDistributed,
+            'distributions'     => $distributions,
+            'fundings'          => $idea->fundings->map(function($f) {
+                return [
+                    'investor_name' => $f->investor->user?->name,
+                    'amount'        => $f->amount,
+                ];
+            }),
+        ];
+    });
 
     return response()->json($ideas);
 }
+
 //تابع يعرض كل المستخدمين 
 
 public function allUsers()
@@ -223,9 +258,6 @@ public function allIdeaOwners()
 }
 
   
-    
-//المعاملات
-
 public function getAllTransactions()
 {
     $transactions = WalletTransaction::with([
@@ -243,6 +275,8 @@ public function getAllTransactions()
                 ? User::find($senderWallet->user_id)
                 : null;
             $senderName = $senderUser?->name;
+        } else {
+            $senderName = 'Admin';
         }
 
         $receiverName = null;
@@ -256,8 +290,7 @@ public function getAllTransactions()
 
         return [
             'transaction_id' => $tx->id,
-
-            'from' => $senderName ?? 'غير معروف',
+            'from' => $senderName,
             'to'   => $receiverName ?? 'غير معروف',
             'amount' => $tx->amount,
             'transaction_type' => $tx->transaction_type ?? 'N/A',
@@ -379,6 +412,7 @@ public function adminWithdrawnIdeas()
     ]);
 }
 
+
 //عمل اجتماع بين اللجنة من اجل تحديد من الذي سو يتولى عملية الادخال 
 public function createCommitteeMeeting(Request $request, Idea $idea)
 {
@@ -417,8 +451,8 @@ public function createCommitteeMeeting(Request $request, Idea $idea)
 }
 
 
-}
 
+}
 
 
 
