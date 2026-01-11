@@ -317,6 +317,17 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 
+Route::middleware(['auth:sanctum'])->group(function () {
+
+    //  إنشاء اجتماع لجنة من اجل تحديد المسؤول عن اجتماع 
+    Route::post(
+        '/ideas/{idea}/committee-meetings',
+        [MeetingController::class, 'createCommitteeMeeting']
+    );
+
+});
+
+
 
 
 
@@ -350,3 +361,8 @@ Route::post('/admin/wallets/charge', [ContentController::class, 'chargeUserWalle
 Route::get('/admin/notifications', [ContentController::class, 'getAdminNotifications']);
 //عرض المشاريع المنسحبة للادمن 
 Route::get('/admin/withdrawals', [ContentController::class, 'adminWithdrawnIdeas']);
+//عمل اجتماع للجنة من قبل الادمن 
+   Route::post(
+        '/admin/ideas/{idea}/committee-meeting',
+        [ContentController::class, 'createCommitteeMeeting']
+    );

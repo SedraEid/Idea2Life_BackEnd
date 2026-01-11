@@ -7,6 +7,7 @@ use App\Models\Content;
 use App\Models\User;
 use App\Models\Committee;
 use App\Models\Idea;
+use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\WalletTransaction;
 use App\Models\Wallet;
@@ -377,6 +378,44 @@ public function adminWithdrawnIdeas()
         'withdrawals' => $withdrawals
     ]);
 }
+
+//عمل اجتماع بين اللجنة من اجل تحديد من الذي سو يتولى عملية الادخال 
+public function createCommitteeMeeting(Request $request, Idea $idea)
+{
+    if (!$idea->committee) {
+        return response()->json([
+            'message' => 'لا توجد لجنة مرتبطة بهذه الفكرة.'
+        ], 422);
+    }
+    $data = $request->validate([
+        'meeting_date' => 'required|date',
+        'meeting_link' => 'nullable|string',
+    ]);
+
+    $meeting = Meeting::create([
+        'idea_id'      => $idea->id,
+        'meeting_date' => $data['meeting_date'],
+        'meeting_link' => $data['meeting_link'] ?? null,
+        'requested_by' => 'committee',
+        'type'         => 'assign_data_entry',
+        'notes'        => 'اجتماع لجنة لتحديد مسؤول إدخال البيانات (منظم من الإدارة)',
+    ]);
+
+    foreach ($idea->committee->committeeMember as $member) {
+        Notification::create([
+            'user_id' => $member->user_id,
+            'title'   => 'اجتماع لجنة من الإدارة',
+            'message' => "قامت الإدارة بتحديد اجتماع لجنة للفكرة '{$idea->title}' لتحديد مسؤول إدخال البيانات.",
+            'type'    => 'assign_data_entry',
+            'is_read' => false,
+        ]);
+    }
+    return response()->json([
+        'message' => 'تم إنشاء اجتماع اللجنة بنجاح.',
+        'meeting' => $meeting
+    ], 201);
+}
+
 
 }
 

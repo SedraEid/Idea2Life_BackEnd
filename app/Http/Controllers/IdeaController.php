@@ -8,6 +8,7 @@ use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
 use App\Models\Roadmap;
+use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
@@ -98,6 +99,16 @@ $roadmap = Roadmap::create([
         'meeting_link' => null,
         'notes' => 'الاجتماع الأولي لتقييم الفكرة بعد التسجيل',
     ]);
+    $admins = User::where('role', 'admin')->get();
+foreach ($admins as $admin) {
+    Notification::create([
+        'user_id' => $admin->id,
+        'title'   => 'مطلوب اجتماع لجنة',
+        'message' => "تم تسجيل فكرة جديدة بعنوان '{$idea->title}'. يرجى إنشاء اجتماع لجنة لتحديد المسؤول عن إدخال البيانات.",
+        'type'    => 'committee_meeting_request',
+        'is_read' => false,
+    ]);
+}
     return response()->json([
         'message' => 'تم تسجيل الفكرة، إسنادها للجنة، وإنشاء خارطة الطريق بنجاح!',
         'idea' => $idea,
