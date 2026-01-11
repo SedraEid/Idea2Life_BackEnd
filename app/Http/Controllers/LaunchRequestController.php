@@ -9,6 +9,7 @@ use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Report;
 use App\Models\Roadmap;
+use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -430,6 +431,94 @@ public function myLaunchRequests(Request $request)
         'message' => 'تم جلب طلبات الإطلاق الخاصة بك بنجاح.',
         'launch_requests' => $launchRequests
     ], 200);
+}
+
+
+//تقييم التمويل تبع الالطاق من قبل اللجنة
+public function evaluateFunding(Request $request, Funding $funding)
+{
+    $user = $request->user();
+    $committeeMember = $user->committeeMember;
+    if (!$committeeMember || $committeeMember->committee_id != $funding->idea->committee_id) {
+        return response()->json(['message' => 'ليس لديك صلاحية تقييم هذا الطلب.'], 403);
+    }
+    $validated = $request->validate([
+        'is_approved' => 'required|boolean',
+        'approved_amount' => 'nullable|numeric|min:0',
+        'committee_notes' => 'nullable|string',
+    ]);
+
+    DB::beginTransaction();
+    try {
+        $funding->update([
+            'is_approved'     => $validated['is_approved'],
+            'approved_amount' => $validated['approved_amount'] ?? $funding->requested_amount,
+            'committee_notes' => $validated['committee_notes'] ?? '',
+            'status'          => $validated['is_approved'] ? 'approved' : 'rejected',
+        ]);
+
+        if ($validated['is_approved']) {
+            $idea = $funding->idea;
+            $investorWallet = $funding->investor?->user?->wallet;
+            $ownerWallet = $idea->owner?->wallet;
+
+            if (!$investorWallet || !$ownerWallet) {
+                DB::rollBack();
+                return response()->json(['message' => 'محفظة المستثمر أو صاحب الفكرة غير موجودة.'], 404);
+            }
+
+            $amount = $funding->approved_amount;
+            if ($investorWallet->balance < $amount) {
+                DB::rollBack();
+                return response()->json(['message' => 'رصيد المستثمر غير كافٍ لإجراء التحويل.'], 400);
+            }
+
+            $investorWallet->decrement('balance', $amount);
+            $ownerWallet->increment('balance', $amount);
+
+            WalletTransaction::create([
+                'wallet_id'        => $investorWallet->id,
+                'funding_id'       => $funding->id,
+                'sender_id'        => $funding->investor?->user?->id,
+                'receiver_id'      => $idea->owner->id,
+                'transaction_type' => 'transfer',
+                'amount'           => $amount,
+                'percentage'       => null,
+                'beneficiary_role' => 'creator',
+                'status'           => 'completed',
+                'payment_method'   => 'wallet',
+                'notes'            => 'تم تحويل مبلغ التمويل من المستثمر إلى صاحب الفكرة.',
+            ]);
+
+            $funding->update([
+                'transfer_date'         => now(),
+                'transaction_reference' => 'TX-' . uniqid(),
+                'payment_method'        => 'wallet',
+            ]);
+        }
+
+        Notification::create([
+            'user_id' => $funding->idea->owner?->id,
+            'title'   => 'تقييم طلب التمويل',
+            'message' => 'تم تقييم طلب التمويل لفكرتك "' . $funding->idea->title . '". الحالة: ' . 
+                         ($validated['is_approved'] ? 'مقبول' : 'مرفوض'),
+            'type'    => 'funding_evaluation',
+            'is_read' => false,
+        ]);
+
+        DB::commit();
+        return response()->json([
+            'message' => 'تم تقييم طلب التمويل وتحديث الحالة وتحويل المبلغ إذا تمت الموافقة.',
+            'funding' => $funding,
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'حدث خطأ أثناء تقييم التمويل.',
+            'error'   => $e->getMessage(),
+        ], 500);
+    }
 }
 
 

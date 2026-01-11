@@ -214,8 +214,10 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ideas/{idea_id}/request-funding', [LaunchRequestController::class, 'requestFunding']);
 });
-//و للموافقة على التمويل استخدمي راوت سطر 103
-
+//الموافقة على التمويل الاطلاق من قبل اللجنة 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/fundings/{funding}/evaluate/launch', [LaunchRequestController::class, 'evaluateFunding']);
+});
 
 // عرض كل المتابعات بعد الإطلاق لصاحب الفكرة
 Route::middleware(['auth:sanctum'])->group(function () {
