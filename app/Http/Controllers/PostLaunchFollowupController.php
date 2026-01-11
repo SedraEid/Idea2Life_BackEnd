@@ -555,6 +555,62 @@ public function profitDistributionSummary(Request $request, Idea $idea)
     ]);
 }
 
+//عرض لاعضاء اللجنة هل تم توزيع الارباح ام لا 
+public function profitDistributionSummaryForCommittee(Request $request, Idea $idea)
+{
+    $user = $request->user();
+    $committeeMember = $user->committeeMember;
+    if (!$committeeMember) {
+        return response()->json([
+            'message' => 'أنت لست عضو لجنة.'
+        ], 403);
+    }
+    if ($idea->committee_id !== $committeeMember->committee_id) {
+        return response()->json([
+            'message' => 'غير مصرح لك بالوصول لهذه البيانات.'
+        ], 403);
+    }
+
+    $isDistributed = $idea->postLaunchFollowups()
+        ->where('profit_distributed', true)
+        ->exists();
+
+    if (!$isDistributed) {
+        return response()->json([
+            'idea_id' => $idea->id,
+            'profit_distributed' => false,
+            'message' => 'لم يتم توزيع الأرباح بعد.',
+            'distributions' => []
+        ]);
+    }
+    $distributions = $idea->profitDistributions()
+        ->with('user:id,name,role')
+        ->get()
+        ->map(function ($distribution) {
+            return [
+                'user_name' => $distribution->user->name,
+                'role'      => $distribution->user_role,
+                'percentage'=> $distribution->percentage . '%',
+                'amount'    => $distribution->amount,
+            ];
+        });
+
+    $yourDistribution = $idea->profitDistributions()
+        ->where('user_id', $user->id)
+        ->first();
+
+    return response()->json([
+        'idea_id' => $idea->id,
+        'idea_title' => $idea->title,
+        'profit_distributed' => true,
+        'your_percentage' => $yourDistribution?->percentage . '%',
+        'your_amount'     => $yourDistribution?->amount,
+
+        'distributions'   => $distributions
+    ]);
+}
+
+
 
 
 

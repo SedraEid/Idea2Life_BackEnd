@@ -540,6 +540,7 @@ public function showFundingForIdea(Request $request, $idea_id)
         ], 404);
     }
     $transactions = WalletTransaction::with([
+
         'sender.user:id,name,email',
         'receiver.user:id,name,email',
         'funding.idea:id,title',
