@@ -78,20 +78,10 @@ class Idea extends Model
         return $this->hasMany(ProfitDistribution::class);
     }
 
-
   public function withdrawalRequests()
     {
         return $this->hasMany(WithdrawalRequest::class);
     }
-
-
-
-
-
-
-
-
-
 
 
 

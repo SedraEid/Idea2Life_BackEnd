@@ -328,10 +328,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 //عرض للجنة اذا تم توزيع الارباح ام لا 
-
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/ideas/{idea}/profit-distribution-summary/comittee',[PostLaunchFollowupController::class, 'profitDistributionSummaryForCommittee']);
-
 });
 
 

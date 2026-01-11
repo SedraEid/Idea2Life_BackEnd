@@ -605,7 +605,6 @@ public function profitDistributionSummaryForCommittee(Request $request, Idea $id
         'profit_distributed' => true,
         'your_percentage' => $yourDistribution?->percentage . '%',
         'your_amount'     => $yourDistribution?->amount,
-
         'distributions'   => $distributions
     ]);
 }
