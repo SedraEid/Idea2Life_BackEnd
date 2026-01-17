@@ -203,6 +203,72 @@ if ($ideaOwner) {
     ]);
 }
 
+public function committeeIdeaReports(Request $request, $idea_id)//عرض نتيجة التقرير الاولي للجنة 
+{
+    $user = $request->user();
+
+    if (!$user->committeeMember) {
+        return response()->json([
+            'message' => 'غير مصرح لك.'
+        ], 403);
+    }
+
+    $committee_id = $user->committeeMember->committee_id;
+    $idea = Idea::where('id', $idea_id)
+        ->where('committee_id', $committee_id)
+        ->first();
+
+    if (!$idea) {
+        return response()->json([
+            'message' => 'لم يتم العثور على هذه الفكرة أو أنها لا تتبع لجنتك.',
+        ], 404);
+    }
+
+    $reports = Report::where('idea_id', $idea_id)
+            ->where('report_type', 'initial')
+        ->with([
+            'meeting:id,meeting_date,notes',
+        ])
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->map(function ($report) {
+            return [
+                'report_id'        => $report->id,
+                'report_type'      => $report->report_type,
+                'evaluation_score' => $report->evaluation_score,
+                'status'           => $report->status,
+                'description'      => $report->description,
+                'strengths'        => $report->strengths,
+                'weaknesses'       => $report->weaknesses,
+                'recommendations'  => $report->recommendations,
+                'meeting' => $report->meeting ? [
+                    'meeting_date' => $report->meeting->meeting_date,
+                    'notes'        => $report->meeting->notes,
+                ] : null,
+                'created_at' => $report->created_at->format('Y-m-d H:i'),
+            ];
+        });
+
+    if ($reports->isEmpty()) {
+        return response()->json([
+            'message' => 'لا توجد تقارير لهذه الفكرة.',
+            'total_reports' => 0,
+            'data' => [],
+        ], 200);
+    }
+
+    return response()->json([
+        'idea' => [
+            'id'     => $idea->id,
+            'title'  => $idea->title,
+            'status' => $idea->status,
+        ],
+        'total_reports' => $reports->count(),
+        'reports' => $reports,
+    ]);
+}
+
+
 
 
 public function advancedEvaluation(Request $request, Idea $idea) // تقييم خطة العمل

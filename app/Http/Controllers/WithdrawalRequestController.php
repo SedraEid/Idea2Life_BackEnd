@@ -41,6 +41,12 @@ public function ownerRequestWithdrawal(Request $request, Idea $idea)
             'message' => 'غير مصرح لك بتقديم طلب انسحاب لهذه الفكرة.'
         ], 403);
     }
+   if (in_array($idea->roadmap_stage, ['Launch', 'Post-Launch Follow-up'])) {
+        return response()->json([
+            'message' => 'لا يمكن تقديم طلب انسحاب أثناء مرحلة الإطلاق أو متابعة ما بعد الإطلاق.'
+        ], 422);
+    }
+
     $existingRequest = WithdrawalRequest::where('idea_id', $idea->id)
         ->where('status', 'pending')
         ->first();
@@ -50,6 +56,7 @@ public function ownerRequestWithdrawal(Request $request, Idea $idea)
             'message' => 'يوجد طلب انسحاب قيد الانتظار بالفعل لهذه الفكرة.'
         ], 422);
     }
+    
     $withdrawalRequest = WithdrawalRequest::create([
         'idea_id' => $idea->id,
         'user_id' => $user->id,

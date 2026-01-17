@@ -425,8 +425,7 @@ if ($totalRevenue > 0 && !$idea->profitDistributions()->exists()) {
         ]);
     }
     DistributeProfitsJob::dispatch($idea->id);
-    $idea->postLaunchFollowups()->update(['profit_distributed' => true]);
-}
+$followup->update(['profit_distributed' => true]);}
     }
 
     return response()->json([
@@ -609,6 +608,7 @@ public function profitDistributionSummaryForCommittee(Request $request, Idea $id
     ]);
 }
 
+//عرض توزيع الارباح 
 
 
 

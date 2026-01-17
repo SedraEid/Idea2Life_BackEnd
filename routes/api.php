@@ -320,19 +320,22 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
 
 Route::middleware(['auth:sanctum'])->group(function () {
-
     //  إنشاء اجتماع لجنة من اجل تحديد المسؤول عن اجتماع 
     Route::post(
         '/ideas/{idea}/committee-meetings',
         [MeetingController::class, 'createCommitteeMeeting']
     );
-
 });
 
 //عرض للجنة اذا تم توزيع الارباح ام لا 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/ideas/{idea}/profit-distribution-summary/comittee',[PostLaunchFollowupController::class, 'profitDistributionSummaryForCommittee']);
 });
+
+//عرض نتيجة التقرير الاولي للجنة 
+Route::get('/committee/ideas/{idea_id}/reports', [ReportController::class, 'committeeIdeaReports'])
+    ->middleware(['auth:sanctum']);
+
 
 
 

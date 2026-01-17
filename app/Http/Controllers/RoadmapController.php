@@ -73,7 +73,7 @@ public function getIdeaRoadmap(Request $request, Idea $idea) // جلب خارط�
     ],
     [
         'name' => 'Project Stabilization / Platform Separation',
-        'message_for_owner' => 'إذا لزم، قدم طلب انفصال المشروع عن المنصة واستكمل الوثائق المطلوبة، اللجنة ستوافق على الاستقرار والانفصال.',
+        'message_for_owner' => 'ادخل تفقد .',
     ],
 ];
 

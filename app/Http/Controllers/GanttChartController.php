@@ -1043,7 +1043,7 @@ try {
     ]);
 
     $funding->update([
-        'status'                => 'funded',
+        'status'                => 'approved',
         'is_approved'           => true,
         'approved_amount'       => $amount,
         'committee_notes'       => $validated['committee_notes'] ?? null,
